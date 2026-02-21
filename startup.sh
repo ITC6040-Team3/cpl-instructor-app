@@ -11,5 +11,6 @@ curl https://packages.microsoft.com/config/ubuntu/22.04/prod.list > /etc/apt/sou
 apt-get update
 ACCEPT_EULA=Y apt-get install -y msodbcsql18
 
+
 echo "ODBC drivers installed. Starting app..."
 exec gunicorn --bind=0.0.0.0:8000 --timeout 600 app:app
