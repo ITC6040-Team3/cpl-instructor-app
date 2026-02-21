@@ -1,3 +1,4 @@
+#!/bin/bash
 set -e
 
 echo "Installing Microsoft ODBC Driver 18 for SQL Server..."
