@@ -1,19 +1,30 @@
 import os
+import logging
 from flask import Flask, render_template, request, jsonify, send_from_directory
 from openai import AzureOpenAI
 
-# NEW: DB test imports
+# DB (optional)
 import pyodbc
-
 
 # Explicit template folder for Azure App Service reliability
 app = Flask(__name__, template_folder="templates")
+app.logger.setLevel(logging.INFO)
 
 
 # ===============================
-# Azure OpenAI Client Factory
+# Helpers
 # ===============================
+def getenv_bool(name: str, default: bool = False) -> bool:
+    v = (os.getenv(name) or "").strip().lower()
+    if not v:
+        return default
+    return v in ("1", "true", "yes", "y", "on")
+
+
 def get_client():
+    """
+    Azure OpenAI client factory.
+    """
     endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
     api_key = os.getenv("AZURE_OPENAI_API_KEY")
     api_version = os.getenv("AZURE_OPENAI_API_VERSION", "2024-12-01-preview")
@@ -31,7 +42,54 @@ def get_client():
         )
         return client, None
     except Exception as e:
-        return None, f"Client initialization failed: {type(e).__name__}"
+        return None, f"Client initialization failed: {type(e).__name__}: {e}"
+
+
+def get_sql_connection_string():
+    """
+    Supports BOTH ways of configuring SQL on Azure App Service:
+
+    A) App setting:
+       SQL_CONNECTION_STRING=...
+
+    B) App Service "Connection strings" blade:
+       If you add name "SQL_CONNECTION_STRING", App Service exposes it as:
+       SQLCONNSTR_SQL_CONNECTION_STRING
+
+       (Also supports SQLAZURECONNSTR_ prefix just in case)
+    """
+    # Most direct (App settings)
+    direct = os.getenv("SQL_CONNECTION_STRING")
+    if direct:
+        return direct
+
+    # If user added it under "Connection strings" with name SQL_CONNECTION_STRING
+    # App Service commonly exposes: SQLCONNSTR_<name>
+    prefixed = os.getenv("SQLCONNSTR_SQL_CONNECTION_STRING")
+    if prefixed:
+        return prefixed
+
+    # Some environments may use SQLAZURECONNSTR_
+    prefixed2 = os.getenv("SQLAZURECONNSTR_SQL_CONNECTION_STRING")
+    if prefixed2:
+        return prefixed2
+
+    # Optional: allow a generic "SQLCONNSTR" variable if someone used different naming
+    # (kept conservative; comment out if you prefer strict)
+    fallback = os.getenv("SQLCONNSTR")
+    if fallback:
+        return fallback
+
+    return None
+
+
+def sql_is_required() -> bool:
+    """
+    If you want to force SQL for everyone, set:
+      REQUIRE_SQL=1
+    in App Service -> Environment variables (App settings)
+    """
+    return getenv_bool("REQUIRE_SQL", default=False)
 
 
 # ===============================
@@ -58,13 +116,18 @@ def chat_page():
 
 @app.get("/admin")
 def admin_page():
+    conn_present = True if get_sql_connection_string() else False
+
     status = {
         "AZURE_OPENAI_ENDPOINT": "✅ set" if os.getenv("AZURE_OPENAI_ENDPOINT") else "❌ missing",
         "AZURE_OPENAI_API_KEY": "✅ set" if os.getenv("AZURE_OPENAI_API_KEY") else "❌ missing",
         "AZURE_OPENAI_API_VERSION": os.getenv("AZURE_OPENAI_API_VERSION") or "(default: 2024-12-01-preview)",
         "AZURE_OPENAI_DEPLOYMENT": "✅ set" if os.getenv("AZURE_OPENAI_DEPLOYMENT") else "❌ missing",
-        # NEW: show whether SQL conn string is present (but never show its value)
-        "SQL_CONNECTION_STRING": "✅ set" if os.getenv("SQL_CONNECTION_STRING") else "❌ missing",
+        # SQL is OPTIONAL unless REQUIRE_SQL=1
+        "SQL_CONNECTION_STRING": (
+            "✅ set" if conn_present else ("❌ missing (REQUIRED)" if sql_is_required() else "⚪ missing (optional)")
+        ),
+        "REQUIRE_SQL": "✅ enabled" if sql_is_required() else "⚪ disabled",
     }
     return render_template("admin.html", status=status)
 
@@ -83,41 +146,46 @@ def versions():
     try:
         import openai
         import httpx
-        return jsonify({
-            "openai_version": getattr(openai, "__version__", "unknown"),
-            "httpx_version": getattr(httpx, "__version__", "unknown"),
-            "python_version": os.sys.version,
-        })
+        return jsonify(
+            {
+                "openai_version": getattr(openai, "__version__", "unknown"),
+                "httpx_version": getattr(httpx, "__version__", "unknown"),
+                "python_version": os.sys.version,
+            }
+        )
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 
 # ===============================
-# ✅ DB CHECK ROUTE
+# ✅ DB CHECK ROUTE (optional)
 # Verifies Web App can connect to Azure SQL
 # ===============================
 @app.get("/dbcheck")
 def dbcheck():
-    conn_str = os.getenv("SQL_CONNECTION_STRING")
+    conn_str = get_sql_connection_string()
+
     if not conn_str:
-        return jsonify({"error": "Missing SQL_CONNECTION_STRING"}), 500
+        # If SQL is required, treat as error; otherwise just say "skipped"
+        if sql_is_required():
+            return jsonify({"error": "Missing SQL connection string (REQUIRE_SQL=1)"}), 500
+        return jsonify({"status": "skipped", "message": "SQL not configured (optional)"}), 200
 
     try:
-        # Keep it simple: open connection and run a tiny query
         conn = pyodbc.connect(conn_str, timeout=10)
         cursor = conn.cursor()
         cursor.execute("SELECT 1")
         row = cursor.fetchone()
         conn.close()
-
         return jsonify({"status": "DB Connected", "result": int(row[0])})
     except Exception as e:
-        # Log full traceback in Azure Log Stream
         app.logger.exception("DB connection check failed")
-        return jsonify({
-            "error": f"DB check failed: {type(e).__name__}",
-            "details": str(e),
-        }), 500
+        return jsonify(
+            {
+                "error": f"DB check failed: {type(e).__name__}",
+                "details": str(e),
+            }
+        ), 500
 
 
 # ===============================
@@ -150,15 +218,11 @@ def api_chat():
         )
 
         answer = (response.choices[0].message.content or "").strip()
-
         return jsonify({"answer": answer})
 
     except Exception as e:
-        # Log full traceback in Azure Log Stream
         app.logger.exception("Azure OpenAI call failed")
-        return jsonify({
-            "error": f"Azure OpenAI call failed: {type(e).__name__}"
-        }), 500
+        return jsonify({"error": f"Azure OpenAI call failed: {type(e).__name__}: {e}"}), 500
 
 
 # ===============================
