@@ -1,5 +1,6 @@
 import os
 import sys
+import uuid
 from flask import Flask, render_template, request, jsonify, send_from_directory
 from openai import AzureOpenAI
 import pyodbc
@@ -116,6 +117,100 @@ def db_ping():
         except Exception:
             pass
 
+        MIGRATION_SQL = """
+IF OBJECT_ID('dbo.sessions', 'U') IS NULL
+BEGIN
+  CREATE TABLE dbo.sessions (
+    session_id UNIQUEIDENTIFIER NOT NULL DEFAULT NEWID(),
+    created_at DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+    user_label NVARCHAR(200) NULL,
+    PRIMARY KEY (session_id)
+  );
+END;
+
+IF OBJECT_ID('dbo.messages', 'U') IS NULL
+BEGIN
+  CREATE TABLE dbo.messages (
+    message_id BIGINT IDENTITY(1,1) PRIMARY KEY,
+    session_id UNIQUEIDENTIFIER NOT NULL,
+    role NVARCHAR(50) NOT NULL,
+    content NVARCHAR(MAX) NOT NULL,
+    created_at DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
+  );
+
+  IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = 'fk_messages_sessions')
+  BEGIN
+    ALTER TABLE dbo.messages
+    ADD CONSTRAINT fk_messages_sessions
+      FOREIGN KEY (session_id) REFERENCES dbo.sessions(session_id);
+  END;
+END;
+
+IF OBJECT_ID('dbo.summaries', 'U') IS NULL
+BEGIN
+  CREATE TABLE dbo.summaries (
+    session_id UNIQUEIDENTIFIER NOT NULL PRIMARY KEY,
+    summary_text NVARCHAR(MAX) NOT NULL,
+    updated_at DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
+  );
+
+  IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = 'fk_summaries_sessions')
+  BEGIN
+    ALTER TABLE dbo.summaries
+    ADD CONSTRAINT fk_summaries_sessions
+      FOREIGN KEY (session_id) REFERENCES dbo.sessions(session_id);
+  END;
+END;
+
+IF OBJECT_ID('dbo.evidence_items', 'U') IS NULL
+BEGIN
+  CREATE TABLE dbo.evidence_items (
+    evidence_id BIGINT IDENTITY(1,1) PRIMARY KEY,
+    session_id UNIQUEIDENTIFIER NOT NULL,
+    kind NVARCHAR(50) NOT NULL,
+    title NVARCHAR(300) NULL,
+    org NVARCHAR(300) NULL,
+    start_date NVARCHAR(40) NULL,
+    end_date NVARCHAR(40) NULL,
+    details NVARCHAR(MAX) NULL,
+    created_at DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
+  );
+
+  IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = 'fk_evidence_sessions')
+  BEGIN
+    ALTER TABLE dbo.evidence_items
+    ADD CONSTRAINT fk_evidence_sessions
+      FOREIGN KEY (session_id) REFERENCES dbo.sessions(session_id);
+  END;
+END;
+"""
+
+
+_schema_ready = False
+
+
+def ensure_schema():
+    global _schema_ready
+    if _schema_ready:
+        return True
+
+    try:
+        conn = get_db_connection()
+        try:
+            cur = conn.cursor()
+            cur.execute(MIGRATION_SQL)
+            conn.commit()
+            _schema_ready = True
+            return True
+        finally:
+            try:
+                conn.close()
+            except Exception:
+                pass
+    except Exception:
+        app.logger.exception("Schema initialization failed")
+        return False
+
 
 # ===============================
 # Static File Route (bulletproof)
@@ -160,6 +255,7 @@ def admin_page():
 @app.get("/health")
 def health():
     try:
+        ensure_schema()
         result = db_ping()
         if result != 1:
             return jsonify({"status": "error", "details": "DB ping returned unexpected result"}), 500
@@ -220,6 +316,7 @@ def dbcheck():
 @app.post("/api/chat")
 def api_chat():
     try:
+        ensure_schema()
         data = request.get_json(silent=True) or {}
         user_message = (data.get("message") or "").strip()
 
@@ -237,7 +334,8 @@ def api_chat():
         response = client.chat.completions.create(
             model=deployment,
             messages=[
-                {"role": "system", "content": "You are a helpful assistant for the CPL course."},
+                {"role": "system",
+                    "content": "You are a helpful assistant for the CPL course."},
                 {"role": "user", "content": user_message},
             ],
             temperature=0.3,
