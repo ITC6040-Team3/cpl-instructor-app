@@ -2,14 +2,155 @@
 <html>
   <head>
     <meta charset="utf-8" />
-    <title>Team 3 CPL App</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>CPL Assistant</title>
+    <style>
+      :root {
+        --bg: #F6F8FB;
+        --card: #FFFFFF;
+        --border: #E6EAF2;
+        --text: #0F172A;
+        --muted: #475569;
+        --primary: #2563EB;
+        --primary-600: #1D4ED8;
+        --shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+        --radius: 12px;
+      }
+
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      }
+
+      a { color: var(--primary); text-decoration: none; }
+      a:hover { text-decoration: underline; }
+
+      .container {
+        max-width: 980px;
+        margin: 0 auto;
+        padding: 26px 18px 40px;
+      }
+
+      .pageTitle {
+        margin: 0;
+        font-size: 30px;
+        line-height: 1.15;
+      }
+
+      .subTitle {
+        margin: 10px 0 18px;
+        color: var(--muted);
+        font-size: 14px;
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+        align-items: start;
+      }
+
+      @media (max-width: 860px) {
+        .grid { grid-template-columns: 1fr; }
+      }
+
+      .card {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        box-shadow: var(--shadow);
+        padding: 16px;
+      }
+
+      .cardTitle {
+        font-size: 16px;
+        font-weight: 700;
+        margin: 0 0 6px;
+      }
+
+      .cardHint {
+        margin: 0 0 12px;
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.35;
+      }
+
+      .btnRow {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        align-items: center;
+      }
+
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 10px 12px;
+        border-radius: 10px;
+        border: 1px solid var(--border);
+        background: #fff;
+        color: var(--text);
+        font-weight: 600;
+        font-size: 14px;
+        text-decoration: none;
+      }
+
+      .btn:hover { background: #F8FAFF; text-decoration: none; }
+
+      .btnPrimary {
+        border-color: transparent;
+        background: var(--primary);
+        color: #fff;
+      }
+
+      .btnPrimary:hover { background: var(--primary-600); }
+
+      .meta {
+        margin-top: 18px;
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .list {
+        margin: 0;
+        padding-left: 18px;
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.45;
+      }
+    </style>
   </head>
   <body>
-    <h2>Team 3 CPL App is running</h2>
-    <ul>
-      <li><a href="/chat">Chat demo</a></li>
-      <li><a href="/admin">Admin / Config status</a></li>
-      <li><a href="/health">Health</a></li>
-    </ul>
+    <div class="container">
+      <h1 class="pageTitle">CPL Assistant</h1>
+      <p class="subTitle">Team 3 prototype for session-based chat and evidence upload management.</p>
+
+      <div class="grid">
+        <div class="card">
+          <div class="cardTitle">Start</div>
+          <p class="cardHint">Open the chat workspace to talk with the assistant and upload evidence artifacts for the current session.</p>
+          <div class="btnRow">
+            <a class="btn btnPrimary" href="/chat">Open Chat</a>
+            <a class="btn" href="/admin">Admin</a>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="cardTitle">System Links</div>
+          <p class="cardHint">Useful endpoints for checking runtime health and database status.</p>
+          <ul class="list">
+            <li><a href="/health">Health</a></li>
+            <li><a href="/dbcheck">DB Check</a></li>
+            <li><a href="/api/dbinfo" target="_blank" rel="noopener">DB Info (JSON)</a></li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="meta">Note: This is a prototype running on Azure App Service with Azure SQL persistence.</div>
+    </div>
   </body>
 </html>

@@ -2,39 +2,239 @@
 <html>
   <head>
     <meta charset="utf-8" />
-    <title>CPL Chat</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>CPL Assistant</title>
     <style>
-      body { font-family: Arial, sans-serif; max-width: 900px; margin: 40px auto; }
-      textarea { width: 100%; height: 120px; }
-      input[type="file"] { flex: 1; }
-      pre { white-space: pre-wrap; padding: 12px; border: 1px solid #ddd; }
-      #uploadsList { padding: 12px; border: 1px solid #ddd; }
-      .uploadRow { display: flex; gap: 12px; align-items: center; margin: 6px 0; }
-      .uploadName { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-      .row { display: flex; gap: 12px; align-items: center; }
+      :root {
+        --bg: #F6F8FB;
+        --card: #FFFFFF;
+        --border: #E6EAF2;
+        --text: #0F172A;
+        --muted: #475569;
+        --primary: #2563EB;
+        --primary-600: #1D4ED8;
+        --danger: #DC2626;
+        --danger-600: #B91C1C;
+        --shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+        --radius: 12px;
+      }
+
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      }
+
+      .container {
+        max-width: 980px;
+        margin: 0 auto;
+        padding: 26px 18px 40px;
+      }
+
+      .pageTitle {
+        margin: 0;
+        font-size: 28px;
+        line-height: 1.15;
+      }
+
+      .subTitle {
+        margin: 8px 0 18px;
+        color: var(--muted);
+        font-size: 14px;
+      }
+
+      .card {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        box-shadow: var(--shadow);
+        padding: 16px;
+      }
+
+      .card + .card { margin-top: 16px; }
+
+      .cardHeader {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 10px;
+      }
+
+      .cardTitle {
+        font-size: 16px;
+        font-weight: 700;
+        margin: 0;
+      }
+
+      .cardHint {
+        font-size: 12px;
+        color: var(--muted);
+        margin: 4px 0 0;
+      }
+
+      .status {
+        font-size: 12px;
+        color: var(--muted);
+        white-space: nowrap;
+      }
+
+      textarea {
+        width: 100%;
+        min-height: 140px;
+        padding: 12px;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        outline: none;
+        resize: vertical;
+        font-size: 14px;
+        line-height: 1.35;
+        background: #fff;
+      }
+
+      textarea:focus {
+        border-color: rgba(37, 99, 235, 0.6);
+        box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+      }
+
+      .row {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        flex-wrap: wrap;
+      }
+
+      input[type="file"] {
+        flex: 1;
+        min-width: 240px;
+      }
+
+      .btn {
+        appearance: none;
+        border: 1px solid var(--border);
+        background: #fff;
+        color: var(--text);
+        padding: 10px 12px;
+        border-radius: 10px;
+        font-weight: 600;
+        font-size: 14px;
+        cursor: pointer;
+      }
+
+      .btn:hover { background: #F8FAFF; }
+      .btn:active { transform: translateY(0.5px); }
+
+      .btnPrimary {
+        border-color: transparent;
+        background: var(--primary);
+        color: #fff;
+      }
+
+      .btnPrimary:hover { background: var(--primary-600); }
+
+      .btnDanger {
+        border-color: transparent;
+        background: var(--danger);
+        color: #fff;
+      }
+
+      .btnDanger:hover { background: var(--danger-600); }
+
+      #uploadsList {
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 12px;
+        background: #fff;
+      }
+
+      .uploadRow {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+        margin: 8px 0;
+      }
+
+      .uploadName {
+        flex: 1;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-size: 14px;
+      }
+
+      pre {
+        white-space: pre-wrap;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 12px;
+        margin: 0;
+        background: #fff;
+        font-size: 13px;
+        line-height: 1.35;
+      }
+
+      .footerNote {
+        margin-top: 10px;
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .sectionLabel {
+        margin: 10px 0 8px;
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 600;
+        letter-spacing: 0.2px;
+      }
     </style>
   </head>
   <body>
-    <h2>CPL Chat Demo</h2>
-    <p>Type a prompt and call Azure OpenAI through the Web App.</p>
+    <div class="container">
+      <h1 class="pageTitle">CPL Assistant</h1>
+      <p class="subTitle">Prototype workspace for chat + evidence uploads (session-based).</p>
 
-    <textarea id="msg" placeholder="Ask something..."></textarea>
-    <br/><br/>
-    <div class="row">
-      <button id="send">Send</button>
-      <span id="status"></span>
+      <div class="card">
+        <div class="cardHeader">
+          <div>
+            <h2 class="cardTitle">Chat</h2>
+            <p class="cardHint">Messages are stored per session and used as conversation context.</p>
+          </div>
+          <div class="status" id="status"></div>
+        </div>
+
+        <textarea id="msg" placeholder="Ask something..."></textarea>
+        <div style="height: 10px;"></div>
+        <div class="row">
+          <button id="send" class="btn btnPrimary">Send</button>
+        </div>
+
+        <div style="height: 14px;"></div>
+        <div class="sectionLabel">Response</div>
+        <pre id="out"></pre>
+      </div>
+
+      <div class="card">
+        <div class="cardHeader">
+          <div>
+            <h2 class="cardTitle">Evidence Upload</h2>
+            <p class="cardHint">Upload PDFs, images, or documents for the current session.</p>
+          </div>
+        </div>
+
+        <div class="row">
+          <input id="file" type="file" />
+          <button id="upload" class="btn">Upload</button>
+        </div>
+
+        <div style="height: 12px;"></div>
+        <div class="sectionLabel">Uploads (current session)</div>
+        <div id="uploadsList"></div>
+
+        <div class="footerNote">Note: Local file uploads on App Service may not persist across redeploys.</div>
+      </div>
     </div>
-
-    <div class="row" style="margin-top: 12px;">
-      <input id="file" type="file" />
-      <button id="upload">Upload</button>
-    </div>
-
-    <h3>Uploads (current session)</h3>
-    <div id="uploadsList"></div>
-
-    <h3>Response</h3>
-    <pre id="out"></pre>
 
     <script src="/static/chat.js"></script>
   </body>

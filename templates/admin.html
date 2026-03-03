@@ -2,15 +2,205 @@
 <html>
   <head>
     <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Admin Status</title>
+    <style>
+      :root {
+        --bg: #F6F8FB;
+        --card: #FFFFFF;
+        --border: #E6EAF2;
+        --text: #0F172A;
+        --muted: #475569;
+        --primary: #2563EB;
+        --primary-600: #1D4ED8;
+        --success: #16A34A;
+        --danger: #DC2626;
+        --shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+        --radius: 12px;
+      }
+
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      }
+
+      a { color: var(--primary); text-decoration: none; }
+      a:hover { text-decoration: underline; }
+
+      .container {
+        max-width: 980px;
+        margin: 0 auto;
+        padding: 26px 18px 40px;
+      }
+
+      .pageTitle {
+        margin: 0;
+        font-size: 28px;
+        line-height: 1.15;
+      }
+
+      .subTitle {
+        margin: 10px 0 18px;
+        color: var(--muted);
+        font-size: 14px;
+      }
+
+      .card {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        box-shadow: var(--shadow);
+        padding: 16px;
+      }
+
+      .card + .card { margin-top: 16px; }
+
+      .cardTitle {
+        font-size: 16px;
+        font-weight: 700;
+        margin: 0 0 6px;
+      }
+
+      .table {
+        width: 100%;
+        border-collapse: collapse;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        overflow: hidden;
+        background: #fff;
+      }
+
+      .table th,
+      .table td {
+        text-align: left;
+        padding: 10px 12px;
+        border-bottom: 1px solid var(--border);
+        font-size: 13px;
+      }
+
+      .table th {
+        background: #F8FAFF;
+        font-weight: 700;
+        color: var(--muted);
+      }
+
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 4px 10px;
+        border-radius: 999px;
+        border: 1px solid var(--border);
+        font-size: 12px;
+        font-weight: 700;
+        background: #fff;
+      }
+
+      .pillOk {
+        color: var(--success);
+        border-color: rgba(22, 163, 74, 0.25);
+        background: rgba(22, 163, 74, 0.08);
+      }
+
+      .pillBad {
+        color: var(--danger);
+        border-color: rgba(220, 38, 38, 0.25);
+        background: rgba(220, 38, 38, 0.08);
+      }
+
+      .btnRow {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        margin-top: 14px;
+      }
+
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 10px 12px;
+        border-radius: 10px;
+        border: 1px solid var(--border);
+        background: #fff;
+        color: var(--text);
+        font-weight: 600;
+        font-size: 14px;
+        text-decoration: none;
+      }
+
+      .btn:hover { background: #F8FAFF; text-decoration: none; }
+
+      .btnPrimary {
+        border-color: transparent;
+        background: var(--primary);
+        color: #fff;
+      }
+
+      .btnPrimary:hover { background: var(--primary-600); }
+
+      .meta {
+        margin-top: 16px;
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.4;
+      }
+
+      .muted {
+        color: var(--muted);
+      }
+    </style>
   </head>
   <body>
-    <h2>Configuration Status</h2>
-    <ul>
-      {% for k,v in status.items() %}
-        <li><b>{{k}}</b>: {{v}}</li>
-      {% endfor %}
-    </ul>
-    <p><a href="/">Back</a></p>
+    <div class="container">
+      <h1 class="pageTitle">Admin Status</h1>
+      <p class="subTitle">Configuration and connectivity checks for the deployed app.</p>
+
+      <div class="card">
+        <div class="cardTitle">Configuration</div>
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Key</th>
+              <th>Status</th>
+              <th>Result</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for k, v in status.items() %}
+              {% set val = v|string %}
+              {% set ok = ('✅' in val) %}
+              <tr>
+                <td><b>{{ k }}</b></td>
+                <td>
+                  {% if ok %}
+                    <span class="pill pillOk">OK</span>
+                  {% else %}
+                    <span class="pill pillBad">Missing</span>
+                  {% endif %}
+                </td>
+                <td class="muted">{{ v }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+
+        <div class="btnRow">
+          <a class="btn btnPrimary" href="/chat">Open Chat</a>
+          <a class="btn" href="/">Home</a>
+          <a class="btn" href="/health">Health</a>
+          <a class="btn" href="/dbcheck">DB Check</a>
+          <a class="btn" href="/api/dbinfo" target="_blank" rel="noopener">DB Info</a>
+        </div>
+
+        <div class="meta">
+          Tip: If any required values are missing, update Azure Web App environment variables.
+          This page reads the current runtime configuration and SQL required-mode status.
+        </div>
+      </div>
+    </div>
   </body>
 </html>
