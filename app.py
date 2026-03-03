@@ -117,7 +117,8 @@ def db_ping():
         except Exception:
             pass
 
-        MIGRATION_SQL = """
+
+MIGRATION_SQL = """
 IF OBJECT_ID('dbo.sessions', 'U') IS NULL
 BEGIN
   CREATE TABLE dbo.sessions (
@@ -184,7 +185,6 @@ BEGIN
   END;
 END;
 """
-
 
 _schema_ready = False
 
@@ -310,6 +310,26 @@ def dbcheck():
         ), 500
 
 
+@app.post("/api/sessions")
+def create_session():
+    ensure_schema()
+    sid = str(uuid.uuid4())
+
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "INSERT INTO dbo.sessions(session_id, user_label) VALUES (?, ?)", (sid, None))
+        conn.commit()
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+    return jsonify({"session_id": sid})
+
+
 # ===============================
 # Chat API Endpoint
 # ===============================
@@ -317,9 +337,13 @@ def dbcheck():
 def api_chat():
     try:
         ensure_schema()
+
         data = request.get_json(silent=True) or {}
+        session_id = (data.get("session_id") or "").strip()
         user_message = (data.get("message") or "").strip()
 
+        if not session_id:
+            return jsonify({"error": "session_id is required"}), 400
         if not user_message:
             return jsonify({"error": "Message is required"}), 400
 
@@ -331,24 +355,66 @@ def api_chat():
         if err:
             return jsonify({"error": err}), 500
 
+        # Store user message and load history
+        conn = get_db_connection()
+        try:
+            cur = conn.cursor()
+            cur.execute(
+                "INSERT INTO dbo.messages(session_id, role, content) VALUES (?, ?, ?)",
+                (session_id, "user", user_message),
+            )
+            conn.commit()
+
+            cur.execute(
+                """
+                SELECT TOP 20 role, content
+                FROM dbo.messages
+                WHERE session_id = ?
+                ORDER BY message_id DESC
+                """,
+                (session_id,),
+            )
+            rows = cur.fetchall()
+            history = [{"role": r[0], "content": r[1]} for r in reversed(rows)]
+        finally:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+        system_text = "You are a helpful assistant for the CPL course."
+        messages = [{"role": "system", "content": system_text}] + history
+
         response = client.chat.completions.create(
             model=deployment,
-            messages=[
-                {"role": "system",
-                    "content": "You are a helpful assistant for the CPL course."},
-                {"role": "user", "content": user_message},
-            ],
+            messages=messages,
             temperature=0.3,
         )
 
         answer = (response.choices[0].message.content or "").strip()
+
+        # Store assistant message
+        conn2 = get_db_connection()
+        try:
+            cur2 = conn2.cursor()
+            cur2.execute(
+                "INSERT INTO dbo.messages(session_id, role, content) VALUES (?, ?, ?)",
+                (session_id, "assistant", answer),
+            )
+            conn2.commit()
+        finally:
+            try:
+                conn2.close()
+            except Exception:
+                pass
+
         return jsonify({"answer": answer})
 
     except Exception as e:
-        app.logger.exception("Azure OpenAI call failed")
+        app.logger.exception("Chat failed")
         return jsonify(
             {
-                "error": f"Azure OpenAI call failed: {type(e).__name__}",
+                "error": f"Chat failed: {type(e).__name__}",
                 "details": str(e),
             }
         ), 500
