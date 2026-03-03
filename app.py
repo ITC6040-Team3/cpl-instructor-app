@@ -2,11 +2,31 @@ import os
 import sys
 import uuid
 from flask import Flask, render_template, request, jsonify, send_from_directory
+from werkzeug.utils import secure_filename
+import time
 from openai import AzureOpenAI
 import pyodbc
 
 # Explicit template folder for Azure App Service reliability
 app = Flask(__name__, template_folder="templates")
+
+BASE_DIR = os.path.dirname(__file__)
+UPLOAD_DIR = os.path.join(BASE_DIR, "uploads")
+os.makedirs(UPLOAD_DIR, exist_ok=True)
+
+app.config["MAX_CONTENT_LENGTH"] = 10 * 1024 * 1024  # 10 MB
+
+ALLOWED_EXTENSIONS = {
+    "pdf", "png", "jpg", "jpeg", "gif",
+    "doc", "docx", "txt"
+}
+
+
+def allowed_file(filename: str) -> bool:
+    if not filename or "." not in filename:
+        return False
+    ext = filename.rsplit(".", 1)[1].lower()
+    return ext in ALLOWED_EXTENSIONS
 
 
 # ===============================
@@ -184,6 +204,26 @@ BEGIN
       FOREIGN KEY (session_id) REFERENCES dbo.sessions(session_id);
   END;
 END;
+
+IF OBJECT_ID('dbo.uploads', 'U') IS NULL
+BEGIN
+  CREATE TABLE dbo.uploads (
+    upload_id BIGINT IDENTITY(1,1) PRIMARY KEY,
+    session_id UNIQUEIDENTIFIER NOT NULL,
+    stored_name NVARCHAR(500) NOT NULL,
+    original_name NVARCHAR(500) NOT NULL,
+    content_type NVARCHAR(120) NULL,
+    size_bytes BIGINT NULL,
+    created_at DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
+  );
+
+  IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = 'fk_uploads_sessions')
+  BEGIN
+    ALTER TABLE dbo.uploads
+    ADD CONSTRAINT fk_uploads_sessions
+      FOREIGN KEY (session_id) REFERENCES dbo.sessions(session_id);
+  END;
+END;
 """
 
 _schema_ready = False
@@ -332,7 +372,7 @@ def dbinfo():
                 return int(row[0]) if row else 0
 
             counts = {}
-            for t in ["sessions", "messages", "summaries", "evidence_items"]:
+            for t in ["sessions", "messages", "summaries", "evidence_items", "uploads"]:
                 counts[t] = count_rows(t) if t in tables else None
 
             cur.execute("""
@@ -389,6 +429,142 @@ def create_session():
             pass
 
     return jsonify({"session_id": sid})
+
+
+# ===============================
+# File Uploads, List, Download
+# ===============================
+
+@app.post("/api/upload")
+def api_upload():
+    try:
+        ensure_schema()
+
+        session_id = (request.form.get("session_id") or "").strip()
+        if not session_id:
+            return jsonify({"error": "session_id is required"}), 400
+
+        if "file" not in request.files:
+            return jsonify({"error": "file is required"}), 400
+
+        f = request.files["file"]
+        if not f or not f.filename:
+            return jsonify({"error": "file is required"}), 400
+
+        original_name = secure_filename(f.filename)
+        if not allowed_file(original_name):
+            return jsonify({"error": "file type not allowed"}), 400
+
+        ts = int(time.time())
+        stored_name = f"{session_id}_{ts}_{original_name}"
+        save_path = os.path.join(UPLOAD_DIR, stored_name)
+
+        f.save(save_path)
+
+        size_bytes = None
+        try:
+            size_bytes = os.path.getsize(save_path)
+        except Exception:
+            pass
+
+        content_type = f.mimetype or None
+
+        conn = get_db_connection()
+        try:
+            cur = conn.cursor()
+            cur.execute(
+                """
+                INSERT INTO dbo.uploads(session_id, stored_name, original_name, content_type, size_bytes)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (session_id, stored_name, original_name, content_type, size_bytes),
+            )
+            conn.commit()
+        finally:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+        return jsonify({
+            "status": "ok",
+            "stored_name": stored_name,
+            "original_name": original_name,
+            "size_bytes": size_bytes,
+            "content_type": content_type
+        })
+
+    except Exception as e:
+        app.logger.exception("Upload failed")
+        return jsonify({
+            "error": f"Upload failed: {type(e).__name__}",
+            "details": str(e)
+        }), 500
+
+
+@app.get("/api/uploads/<session_id>")
+def api_list_uploads(session_id):
+    try:
+        ensure_schema()
+
+        conn = get_db_connection()
+        try:
+            cur = conn.cursor()
+            cur.execute(
+                """
+                SELECT TOP 50 upload_id, original_name, stored_name, content_type, size_bytes, created_at
+                FROM dbo.uploads
+                WHERE session_id = ?
+                ORDER BY upload_id DESC
+                """,
+                (session_id,),
+            )
+            rows = cur.fetchall()
+        finally:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+        items = []
+        for r in rows:
+            items.append({
+                "upload_id": int(r[0]),
+                "original_name": r[1],
+                "stored_name": r[2],
+                "content_type": r[3],
+                "size_bytes": int(r[4]) if r[4] is not None else None,
+                "created_at": str(r[5]),
+                "download_url": f"/api/download/{r[2]}"
+            })
+
+        return jsonify({"status": "ok", "items": items})
+
+    except Exception as e:
+        app.logger.exception("List uploads failed")
+        return jsonify({
+            "error": f"List uploads failed: {type(e).__name__}",
+            "details": str(e)
+        }), 500
+
+
+@app.get("/api/download/<path:stored_name>")
+def api_download(stored_name):
+    try:
+        safe_name = secure_filename(stored_name)
+        file_path = os.path.join(UPLOAD_DIR, safe_name)
+
+        if not os.path.isfile(file_path):
+            return jsonify({"error": "File not found"}), 404
+
+        return send_from_directory(UPLOAD_DIR, safe_name, as_attachment=True)
+
+    except Exception as e:
+        app.logger.exception("Download failed")
+        return jsonify({
+            "error": f"Download failed: {type(e).__name__}",
+            "details": str(e)
+        }), 500
 
 
 # ===============================
