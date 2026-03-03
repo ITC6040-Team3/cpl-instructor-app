@@ -310,6 +310,67 @@ def dbcheck():
         ), 500
 
 
+@app.get("/api/dbinfo")
+def dbinfo():
+    try:
+        ensure_schema()
+
+        conn = get_db_connection()
+        try:
+            cur = conn.cursor()
+
+            cur.execute("""
+                SELECT TABLE_NAME
+                FROM INFORMATION_SCHEMA.TABLES
+                WHERE TABLE_SCHEMA = 'dbo'
+            """)
+            tables = sorted([r[0] for r in cur.fetchall()])
+
+            def count_rows(table_name: str) -> int:
+                cur.execute(f"SELECT COUNT(1) FROM dbo.{table_name}")
+                row = cur.fetchone()
+                return int(row[0]) if row else 0
+
+            counts = {}
+            for t in ["sessions", "messages", "summaries", "evidence_items"]:
+                counts[t] = count_rows(t) if t in tables else None
+
+            cur.execute("""
+                SELECT TOP 1 session_id, role, created_at
+                FROM dbo.messages
+                ORDER BY message_id DESC
+            """)
+            last_msg = cur.fetchone()
+            last_message = None
+            if last_msg:
+                last_message = {
+                    "session_id": str(last_msg[0]),
+                    "role": last_msg[1],
+                    "created_at": str(last_msg[2]),
+                }
+
+        finally:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+        return jsonify({
+            "status": "ok",
+            "tables": tables,
+            "row_counts": counts,
+            "last_message": last_message
+        })
+
+    except Exception as e:
+        app.logger.exception("dbinfo failed")
+        return jsonify({
+            "status": "error",
+            "error": f"{type(e).__name__}",
+            "details": str(e)
+        }), 500
+
+
 @app.post("/api/sessions")
 def create_session():
     ensure_schema()
