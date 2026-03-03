@@ -1,8 +1,13 @@
-let sessionId = null;
+const SESSION_STORAGE_KEY = "cpl_session_id";
+let sessionId = localStorage.getItem(SESSION_STORAGE_KEY) || null;
 
 function setStatus(text) {
   const el = document.getElementById("status");
   if (el) el.textContent = text || "";
+}
+
+if (sessionId) {
+  setStatus(`Session: ${sessionId}`);
 }
 
 async function ensureSession() {
@@ -17,6 +22,7 @@ async function ensureSession() {
   }
 
   sessionId = data.session_id;
+  localStorage.setItem(SESSION_STORAGE_KEY, sessionId);
   setStatus(`Session: ${sessionId}`);
   return sessionId;
 }
