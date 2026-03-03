@@ -36,9 +36,15 @@ async function refreshUploads() {
   const listEl = document.getElementById("uploadsList");
   if (!listEl) return;
 
+  if (!sessionId) {
+    listEl.textContent = "No session.";
+    return;
+  }
+
   try {
     const res = await fetch(`/api/uploads/${sessionId}`);
     const data = await res.json();
+
     if (!res.ok) {
       listEl.textContent = data?.error
         ? `Error: ${data.error}${data.details ? " - " + data.details : ""}`
@@ -46,11 +52,70 @@ async function refreshUploads() {
       return;
     }
 
-    listEl.textContent = JSON.stringify(data.items || [], null, 2);
+    const items = data.items || [];
+    if (items.length === 0) {
+      listEl.textContent = "No uploads yet.";
+      return;
+    }
+
+    listEl.innerHTML = items.map((it) => {
+      const name = it.original_name || it.stored_name;
+      const dl = it.download_url;
+      const id = it.upload_id;
+      return `
+        <div class="uploadRow">
+          <div class="uploadName" title="${name}">${name}</div>
+          <a href="${dl}" target="_blank" rel="noopener">Download</a>
+          <button class="delUpload" data-upload-id="${id}">Delete</button>
+        </div>
+      `;
+    }).join("");
+
   } catch (e) {
     listEl.textContent = `Network error: ${e?.message || e}`;
   }
 }
+
+document.addEventListener("click", async (ev) => {
+  const target = ev.target;
+  if (!target || !target.classList || !target.classList.contains("delUpload")) return;
+
+  const uploadId = target.getAttribute("data-upload-id");
+  if (!uploadId) return;
+
+  const out = document.getElementById("out");
+
+  try {
+    await ensureSession();
+
+    if (out) out.textContent = "Deleting...";
+
+    const res = await fetch(`/api/uploads/${uploadId}`, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ session_id: sessionId }),
+    });
+
+    const text = await res.text();
+    let data = null;
+    try { data = JSON.parse(text); } catch (_) {}
+
+    if (!res.ok) {
+      if (out) {
+        out.textContent = data?.error
+          ? `Delete error (${res.status}): ${data.error}${data.details ? " - " + data.details : ""}`
+          : `Delete error (${res.status}): ${text}`;
+      }
+      return;
+    }
+
+    if (out) out.textContent = "Deleted.";
+    await refreshUploads();
+
+  } catch (e) {
+    if (out) out.textContent = `Network error: ${e?.message || e}`;
+  }
+});
 
 document.getElementById("send").addEventListener("click", async () => {
   const msg = document.getElementById("msg").value.trim();

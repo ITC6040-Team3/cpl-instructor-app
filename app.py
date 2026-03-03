@@ -568,6 +568,79 @@ def api_download(stored_name):
 
 
 # ===============================
+# Delete upload endpoint (delete DB row and file)
+# ===============================
+@app.delete("/api/uploads/<int:upload_id>")
+def api_delete_upload(upload_id):
+    try:
+        ensure_schema()
+
+        data = request.get_json(silent=True) or {}
+        session_id = (data.get("session_id") or "").strip()
+        if not session_id:
+            return jsonify({"error": "session_id is required"}), 400
+
+        stored_name = None
+
+        conn = get_db_connection()
+        try:
+            cur = conn.cursor()
+
+            # Verify the upload belongs to this session and fetch stored_name
+            cur.execute(
+                """
+                SELECT stored_name
+                FROM dbo.uploads
+                WHERE upload_id = ? AND session_id = ?
+                """,
+                (upload_id, session_id),
+            )
+            row = cur.fetchone()
+            if not row:
+                return jsonify({"error": "Upload not found for this session"}), 404
+
+            stored_name = row[0]
+
+            # Delete DB row
+            cur.execute(
+                "DELETE FROM dbo.uploads WHERE upload_id = ? AND session_id = ?",
+                (upload_id, session_id),
+            )
+            conn.commit()
+
+        finally:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+        # Delete the file from disk
+        safe_name = secure_filename(stored_name)
+        file_path = os.path.join(UPLOAD_DIR, safe_name)
+        file_deleted = False
+        if os.path.isfile(file_path):
+            try:
+                os.remove(file_path)
+                file_deleted = True
+            except Exception:
+                app.logger.exception("Failed to delete file from disk")
+
+        return jsonify({
+            "status": "ok",
+            "upload_id": upload_id,
+            "stored_name": stored_name,
+            "file_deleted": file_deleted
+        })
+
+    except Exception as e:
+        app.logger.exception("Delete upload failed")
+        return jsonify({
+            "error": f"Delete upload failed: {type(e).__name__}",
+            "details": str(e)
+        }), 500
+
+
+# ===============================
 # Chat API Endpoint
 # ===============================
 @app.post("/api/chat")
