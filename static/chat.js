@@ -6,21 +6,6 @@ function setStatus(text) {
   if (el) el.textContent = text || "";
 }
 
-function showTopNotice() {
-  const notice = document.getElementById("chatNotice");
-  if (!notice) return;
-
-  setTimeout(() => {
-    notice.classList.add("hide");
-  }, 4500);
-
-  setTimeout(() => {
-    if (notice.parentNode) {
-      notice.remove();
-    }
-  }, 5200);
-}
-
 function getChatMessagesEl() {
   return document.getElementById("chatMessages");
 }
@@ -542,7 +527,3 @@ if (sessionId) {
   loadSummary();
   loadEvidence();
 }
-
-document.addEventListener("DOMContentLoaded", () => {
-  showTopNotice();
-});

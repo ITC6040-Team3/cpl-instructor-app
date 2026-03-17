@@ -89,15 +89,10 @@
         display: flex;
         align-items: center;
         justify-content: space-between;
-        gap: 16px;
+        gap: 12px;
         padding: 16px 16px 14px;
         border-bottom: 1px solid var(--border);
         background: #fff;
-      }
-
-      .chatHeaderInfo {
-        min-width: 0;
-        flex: 1;
       }
 
       .chatHeaderTitle {
@@ -110,9 +105,6 @@
         margin: 4px 0 0;
         color: var(--muted);
         font-size: 12px;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
       }
 
       .sessionBar {
@@ -176,24 +168,6 @@
 
       .btnDanger:hover {
         background: var(--danger-600);
-      }
-
-      .chatNotice {
-        margin: 14px 16px 0;
-        padding: 10px 14px;
-        border: 1px solid var(--warning-border);
-        background: var(--warning-bg);
-        color: var(--warning-text);
-        border-radius: 12px;
-        font-size: 13px;
-        line-height: 1.5;
-        transition: opacity 0.45s ease, transform 0.45s ease;
-      }
-
-      .chatNotice.hide {
-        opacity: 0;
-        transform: translateY(-6px);
-        pointer-events: none;
       }
 
       .chatMessages {
@@ -435,11 +409,11 @@
       <div class="layout">
         <div class="card chatCard">
           <div class="chatHeader">
-            <div class="chatHeaderInfo">
-               <h2 class="chatHeaderTitle">Chat</h2>
-               <p class="chatHeaderHint">
-                 Submit your certification waiver information step by step.
-               </p>
+            <div>
+              <h2 class="chatHeaderTitle">Chat</h2>
+              <p class="chatHeaderHint">
+                Submit your certification waiver information step by step.
+              </p>
             </div>
 
             <div class="sessionBar">
@@ -449,9 +423,6 @@
             </div>
           </div>
 
-          <div id="chatNotice" class="chatNotice">
-            Refreshing the page may remove the visible chat history. Please check the summary panel for saved session information.
-          </div>
 
           <div id="chatMessages" class="chatMessages">
             <div class="emptyState">

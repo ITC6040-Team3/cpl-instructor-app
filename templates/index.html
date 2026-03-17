@@ -18,7 +18,9 @@
         --radius: 16px;
       }
 
-      * { box-sizing: border-box; }
+      * {
+        box-sizing: border-box;
+      }
 
       body {
         margin: 0;
@@ -47,7 +49,7 @@
         grid-template-columns: 1.25fr 0.95fr;
         gap: 20px;
         align-items: stretch;
-        margin-bottom: 22px;
+        margin-bottom: 24px;
       }
 
       @media (max-width: 900px) {
@@ -174,22 +176,22 @@
 
       .grid {
         display: grid;
-        grid-template-columns: repeat(3, 1fr);
+        grid-template-columns: 1fr 1fr;
         gap: 16px;
       }
 
-      @media (max-width: 980px) {
+      @media (max-width: 900px) {
         .grid {
           grid-template-columns: 1fr;
         }
       }
 
       .card {
-        padding: 18px;
+        padding: 20px;
       }
 
       .cardTitle {
-        font-size: 17px;
+        font-size: 18px;
         font-weight: 700;
         margin: 0 0 8px;
       }
@@ -201,7 +203,7 @@
         line-height: 1.6;
       }
 
-      .linkList {
+      .list {
         margin: 0;
         padding-left: 18px;
         color: var(--muted);
@@ -209,7 +211,7 @@
         line-height: 1.7;
       }
 
-      .footerNote {
+      .meta {
         margin-top: 20px;
         color: var(--muted);
         font-size: 12px;
@@ -254,31 +256,28 @@
         </div>
       </section>
 
-      <h2 class="sectionTitle">Workspace Modules</h2>
+      <h2 class="sectionTitle">Workspace Overview</h2>
 
       <section class="grid">
         <div class="card">
-          <div class="cardTitle">Chat Intake</div>
+          <div class="cardTitle">How It Works</div>
           <p class="cardHint">
-            Students interact with the assistant in a guided intake flow to submit waiver-related information.
+            The assistant is designed as a guided intake workspace for certification-based waiver requests.
           </p>
-          <a class="btn btnPrimary" href="/chat">Go to Chat</a>
-        </div>
-
-        <div class="card">
-          <div class="cardTitle">Evidence Management</div>
-          <p class="cardHint">
-            Upload and review supporting files tied to the active session, including file download and deletion.
-          </p>
-          <a class="btn" href="/chat">Open Evidence Panel</a>
+          <ul class="list">
+            <li>Start a new case session in the chat workspace</li>
+            <li>Submit course and certification information step by step</li>
+            <li>Upload supporting evidence tied to the current session</li>
+            <li>Review the generated case summary and structured evidence</li>
+          </ul>
         </div>
 
         <div class="card">
           <div class="cardTitle">System Monitoring</div>
           <p class="cardHint">
-            Review environment configuration, runtime health, database connectivity, and session tools.
+            Use the admin and diagnostic pages to review system health, configuration, and session-level outputs.
           </p>
-          <ul class="linkList">
+          <ul class="list">
             <li><a href="/admin">Admin Dashboard</a></li>
             <li><a href="/health">Health</a></li>
             <li><a href="/dbcheck">DB Check</a></li>
@@ -287,7 +286,7 @@
         </div>
       </section>
 
-      <div class="footerNote">
+      <div class="meta">
         Note: This is a prototype environment for demonstration and development purposes.
       </div>
     </div>
