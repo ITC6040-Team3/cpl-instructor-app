@@ -1,10 +1,11 @@
 import os
 import sys
 import uuid
+import json
 from flask import Flask, render_template, request, jsonify, send_from_directory
 from openai import AzureOpenAI
 
-from db_utils import get_sql_connection_string, health_check, run_sql_file, fetch_all
+from db_utils import get_sql_connection_string, health_check, run_sql_file, fetch_all, execute_non_query
 from chat_storage import (
     create_chat_session,
     ensure_chat_session,
@@ -113,6 +114,53 @@ def ensure_schema():
     except Exception:
         app.logger.exception("Schema initialization failed")
         return False
+
+
+# ===============================
+# Evidence Items Helpers
+# ===============================
+
+def clear_evidence_items(session_id: str):
+    execute_non_query(
+        "DELETE FROM dbo.evidence_items WHERE session_id = ?",
+        (session_id,),
+    )
+
+
+def save_evidence_items(session_id: str, items):
+    clear_evidence_items(session_id)
+
+    for item in items:
+        kind = (item.get("kind") or "certification").strip()
+        title = item.get("title")
+        org = item.get("org")
+        start_date = item.get("start_date")
+        end_date = item.get("end_date")
+        details = item.get("details")
+
+        execute_non_query(
+            """
+            INSERT INTO dbo.evidence_items(session_id, kind, title, org, start_date, end_date, details)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (session_id, kind, title, org, start_date, end_date, details),
+        )
+
+
+def parse_json_payload(text: str):
+    text = (text or "").strip()
+
+    if text.startswith("```"):
+        text = text.strip("`")
+        if text.startswith("json"):
+            text = text[4:].strip()
+
+    start = text.find("{")
+    end = text.rfind("}")
+    if start != -1 and end != -1:
+        text = text[start:end + 1]
+
+    return json.loads(text)
 
 
 # ===============================
@@ -299,6 +347,44 @@ def api_get_summary(session_id):
         app.logger.exception("Get summary failed")
         return jsonify({
             "error": f"Get summary failed: {type(e).__name__}",
+            "details": str(e)
+        }), 500
+
+
+# ===============================
+# AI-Extracted Evidence Items API
+# ===============================
+
+@app.get("/api/evidence/<session_id>")
+def api_get_evidence(session_id):
+    try:
+        ensure_schema()
+        rows = fetch_all(
+            """
+            SELECT evidence_id, session_id, kind, title, org, start_date, end_date, details, created_at
+            FROM dbo.evidence_items
+            WHERE session_id = ?
+            ORDER BY evidence_id ASC
+            """,
+            (session_id,),
+        )
+
+        for row in rows:
+            if row.get("evidence_id") is not None:
+                row["evidence_id"] = int(row["evidence_id"])
+            if row.get("created_at") is not None:
+                row["created_at"] = str(row["created_at"])
+            if row.get("session_id") is not None:
+                row["session_id"] = str(row["session_id"])
+
+        return jsonify({
+            "status": "ok",
+            "items": rows,
+        })
+    except Exception as e:
+        app.logger.exception("Get evidence failed")
+        return jsonify({
+            "error": f"Get evidence failed: {type(e).__name__}",
             "details": str(e)
         }), 500
 
@@ -782,9 +868,61 @@ Do not include extra commentary.
             summary_response.choices[0].message.content or "").strip()
         save_summary(session_id, summary_text)
 
+        evidence_prompt = f"""
+You extract structured evidence items for a university CPL intake session.
+
+Return STRICT JSON only.
+Do not use markdown.
+Do not add explanation.
+
+Schema:
+{{
+  "items": [
+    {{
+      "kind": "course|certification|evidence|identity|status",
+      "title": "string or null",
+      "org": "string or null",
+      "start_date": "string or null",
+      "end_date": "string or null",
+      "details": "string or null"
+    }}
+  ]
+}}
+
+Use the current summary and latest exchange to build the structured items.
+
+Current summary:
+{summary_text}
+
+Latest user message:
+{user_message}
+
+Latest assistant response:
+{answer}
+"""
+
+        evidence_response = client.chat.completions.create(
+            model=deployment,
+            messages=[
+                {"role": "system", "content": "You extract structured CPL evidence data and output valid JSON only."},
+                {"role": "user", "content": evidence_prompt},
+            ],
+            temperature=0.1,
+        )
+
+        evidence_raw = (
+            evidence_response.choices[0].message.content or "").strip()
+        evidence_data = parse_json_payload(evidence_raw)
+        evidence_items = evidence_data.get("items", [])
+        if not isinstance(evidence_items, list):
+            evidence_items = []
+
+        save_evidence_items(session_id, evidence_items)
+
         return jsonify({
             "answer": answer,
             "summary": summary_text,
+            "evidence_items": evidence_items,
         })
 
     except Exception as e:
