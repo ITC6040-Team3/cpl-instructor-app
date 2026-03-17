@@ -6,19 +6,93 @@ function setStatus(text) {
   if (el) el.textContent = text || "";
 }
 
+function getChatMessagesEl() {
+  return document.getElementById("chatMessages");
+}
+
+function clearChatMessages() {
+  const box = getChatMessagesEl();
+  if (!box) return;
+  box.innerHTML = `
+    <div class="emptyState">
+      Start a message to begin your certification waiver intake request.
+    </div>
+  `;
+}
+
+function removeEmptyState() {
+  const box = getChatMessagesEl();
+  if (!box) return;
+  const empty = box.querySelector(".emptyState");
+  if (empty) empty.remove();
+}
+
+function scrollChatToBottom() {
+  const box = getChatMessagesEl();
+  if (!box) return;
+  box.scrollTop = box.scrollHeight;
+}
+
+function appendMessage(role, text) {
+  const box = getChatMessagesEl();
+  if (!box) return;
+
+  removeEmptyState();
+
+  const row = document.createElement("div");
+  row.className = `messageRow ${role}`;
+
+  const bubble = document.createElement("div");
+  bubble.className = `bubble ${role}`;
+  bubble.textContent = text || "";
+
+  row.appendChild(bubble);
+  box.appendChild(row);
+  scrollChatToBottom();
+}
+
+function appendTemporaryThinking() {
+  const box = getChatMessagesEl();
+  if (!box) return null;
+
+  removeEmptyState();
+
+  const row = document.createElement("div");
+  row.className = "messageRow bot";
+  row.dataset.temp = "thinking";
+
+  const bubble = document.createElement("div");
+  bubble.className = "bubble bot";
+  bubble.textContent = "Thinking...";
+
+  row.appendChild(bubble);
+  box.appendChild(row);
+  scrollChatToBottom();
+
+  return row;
+}
+
+function removeTemporaryThinking() {
+  const box = getChatMessagesEl();
+  if (!box) return;
+  const temp = box.querySelector('[data-temp="thinking"]');
+  if (temp) temp.remove();
+}
+
 function resetSessionView() {
   const msgEl = document.getElementById("msg");
-  const outEl = document.getElementById("out");
   const summaryBox = document.getElementById("summaryBox");
   const uploadsList = document.getElementById("uploadsList");
   const evidenceList = document.getElementById("evidenceList");
   const fileEl = document.getElementById("file");
 
   if (msgEl) msgEl.value = "";
-  if (outEl) outEl.textContent = "";
   if (summaryBox) summaryBox.textContent = "No summary yet.";
   if (uploadsList) uploadsList.textContent = "No session.";
   if (fileEl) fileEl.value = "";
+
+  clearChatMessages();
+
   if (evidenceList) {
     evidenceList.innerHTML = `
       <li class="evidenceItem">
@@ -37,21 +111,18 @@ async function startNewSession() {
   try {
     await ensureSession();
   } catch (e) {
-    const outEl = document.getElementById("out");
-    if (outEl) outEl.textContent = `Network error: ${e?.message || e}`;
+    appendMessage("bot", `Network error: ${e?.message || e}`);
   }
 }
 
 async function deleteCurrentSession() {
-  const outEl = document.getElementById("out");
-
   if (!sessionId) {
     await startNewSession();
     return;
   }
 
   try {
-    if (outEl) outEl.textContent = "Deleting session...";
+    appendMessage("bot", "Deleting session...");
 
     const res = await fetch(`/api/session/${sessionId}`, {
       method: "DELETE",
@@ -62,47 +133,24 @@ async function deleteCurrentSession() {
     try { data = JSON.parse(text); } catch (_) {}
 
     if (!res.ok) {
-      if (outEl) {
-        outEl.textContent = data?.error
+      appendMessage(
+        "bot",
+        data?.error
           ? `Delete session error (${res.status}): ${data.error}${data.details ? " - " + data.details : ""}`
-          : `Delete session error (${res.status}): ${text}`;
-      }
+          : `Delete session error (${res.status}): ${text}`
+      );
       return;
     }
 
     localStorage.removeItem(SESSION_STORAGE_KEY);
     sessionId = null;
     resetSessionView();
-    if (outEl) outEl.textContent = "Session deleted.";
     setStatus("");
     await ensureSession();
+    appendMessage("bot", "Session deleted. A new session is ready.");
   } catch (e) {
-    if (outEl) outEl.textContent = `Network error: ${e?.message || e}`;
+    appendMessage("bot", `Network error: ${e?.message || e}`);
   }
-}
-
-if (sessionId) {
-  setStatus(`Session: ${sessionId}`);
-}
-
-if (sessionId) {
-  refreshUploads();
-  loadSummary();
-  loadEvidence();
-}
-
-const newSessionBtn = document.getElementById("newSession");
-if (newSessionBtn) {
-  newSessionBtn.addEventListener("click", async () => {
-    await startNewSession();
-  });
-}
-
-const deleteSessionBtn = document.getElementById("deleteSession");
-if (deleteSessionBtn) {
-  deleteSessionBtn.addEventListener("click", async () => {
-    await deleteCurrentSession();
-  });
 }
 
 async function ensureSession() {
@@ -119,6 +167,7 @@ async function ensureSession() {
   sessionId = data.session_id;
   localStorage.setItem(SESSION_STORAGE_KEY, sessionId);
   setStatus(`Session: ${sessionId}`);
+
   refreshUploads();
   loadSummary();
   loadEvidence();
@@ -155,15 +204,17 @@ async function refreshUploads() {
       const name = it.original_name || it.stored_name;
       const dl = it.download_url;
       const id = it.upload_id;
+
       return `
         <div class="uploadRow">
           <div class="uploadName" title="${name}">${name}</div>
-          <a href="${dl}" target="_blank" rel="noopener">Download</a>
-          <button class="delUpload" data-upload-id="${id}">Delete</button>
+          <div class="uploadActions">
+            <a href="${dl}" target="_blank" rel="noopener">Download</a>
+            <button class="delUpload" data-upload-id="${id}">Delete</button>
+          </div>
         </div>
       `;
     }).join("");
-
   } catch (e) {
     listEl.textContent = `Network error: ${e?.message || e}`;
   }
@@ -216,7 +267,11 @@ async function loadEvidence() {
     if (!res.ok) {
       list.innerHTML = `
         <li class="evidenceItem">
-          <div class="evidenceDetails">${data?.error ? `Error: ${data.error}${data.details ? " - " + data.details : ""}` : `Error: ${res.status}`}</div>
+          <div class="evidenceDetails">${
+            data?.error
+              ? `Error: ${data.error}${data.details ? " - " + data.details : ""}`
+              : `Error: ${res.status}`
+          }</div>
         </li>
       `;
       return;
@@ -264,12 +319,8 @@ document.addEventListener("click", async (ev) => {
   const uploadId = target.getAttribute("data-upload-id");
   if (!uploadId) return;
 
-  const out = document.getElementById("out");
-
   try {
     await ensureSession();
-
-    if (out) out.textContent = "Deleting...";
 
     const res = await fetch(`/api/uploads/${uploadId}`, {
       method: "DELETE",
@@ -282,37 +333,41 @@ document.addEventListener("click", async (ev) => {
     try { data = JSON.parse(text); } catch (_) {}
 
     if (!res.ok) {
-      if (out) {
-        out.textContent = data?.error
+      appendMessage(
+        "bot",
+        data?.error
           ? `Delete error (${res.status}): ${data.error}${data.details ? " - " + data.details : ""}`
-          : `Delete error (${res.status}): ${text}`;
-      }
+          : `Delete error (${res.status}): ${text}`
+      );
       return;
     }
 
-    if (out) out.textContent = "Deleted.";
+    appendMessage("bot", "File deleted.");
     await refreshUploads();
     await loadSummary();
     await loadEvidence();
-
   } catch (e) {
-    if (out) out.textContent = `Network error: ${e?.message || e}`;
+    appendMessage("bot", `Network error: ${e?.message || e}`);
   }
 });
 
-document.getElementById("send").addEventListener("click", async () => {
-  const msg = document.getElementById("msg").value.trim();
-  const out = document.getElementById("out");
+async function sendMessage() {
+  const msgEl = document.getElementById("msg");
+  const msg = msgEl?.value.trim() || "";
 
   if (!msg) {
-    out.textContent = "Please type a message first.";
+    appendMessage("bot", "Please type a message first.");
     return;
   }
 
-  out.textContent = "Thinking...";
+  appendMessage("user", msg);
+  if (msgEl) msgEl.value = "";
+
+  let thinkingRow = null;
 
   try {
     await ensureSession();
+    thinkingRow = appendTemporaryThinking();
 
     const res = await fetch("/api/chat", {
       method: "POST",
@@ -324,25 +379,45 @@ document.getElementById("send").addEventListener("click", async () => {
     let data = null;
     try { data = JSON.parse(text); } catch (_) {}
 
+    removeTemporaryThinking();
+
     if (!res.ok) {
-      out.textContent = data?.error
-        ? `Error (${res.status}): ${data.error}${data.details ? " - " + data.details : ""}`
-        : `Error (${res.status}): ${text}`;
+      appendMessage(
+        "bot",
+        data?.error
+          ? `Error (${res.status}): ${data.error}${data.details ? " - " + data.details : ""}`
+          : `Error (${res.status}): ${text}`
+      );
       return;
     }
 
-    out.textContent = data?.answer ?? text;
+    appendMessage("bot", data?.answer ?? text);
     await loadSummary();
     await loadEvidence();
   } catch (e) {
-    out.textContent = `Network error: ${e?.message || e}`;
+    removeTemporaryThinking();
+    appendMessage("bot", `Network error: ${e?.message || e}`);
   }
-});
+}
+
+const sendBtn = document.getElementById("send");
+if (sendBtn) {
+  sendBtn.addEventListener("click", sendMessage);
+}
+
+const msgTextarea = document.getElementById("msg");
+if (msgTextarea) {
+  msgTextarea.addEventListener("keydown", async (e) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      await sendMessage();
+    }
+  });
+}
 
 const uploadBtn = document.getElementById("upload");
 if (uploadBtn) {
   uploadBtn.addEventListener("click", async () => {
-    const out = document.getElementById("out");
     const fileEl = document.getElementById("file");
 
     try {
@@ -350,11 +425,11 @@ if (uploadBtn) {
 
       const file = fileEl && fileEl.files && fileEl.files[0];
       if (!file) {
-        if (out) out.textContent = "Please select a file first.";
+        appendMessage("bot", "Please select a file first.");
         return;
       }
 
-      if (out) out.textContent = "Uploading...";
+      appendMessage("bot", "Uploading file...");
 
       const fd = new FormData();
       fd.append("session_id", sessionId);
@@ -370,25 +445,44 @@ if (uploadBtn) {
       try { data = JSON.parse(text); } catch (_) {}
 
       if (!res.ok) {
-        if (out) {
-          out.textContent = data?.error
+        appendMessage(
+          "bot",
+          data?.error
             ? `Upload error (${res.status}): ${data.error}${data.details ? " - " + data.details : ""}`
-            : `Upload error (${res.status}): ${text}`;
-        }
+            : `Upload error (${res.status}): ${text}`
+        );
         return;
       }
 
-      if (out) {
-        out.textContent = `Uploaded: ${data.original_name || file.name} (${data.size_bytes ?? file.size} bytes)`;
-      }
-
+      appendMessage("bot", `Uploaded: ${data.original_name || file.name}`);
       if (fileEl) fileEl.value = "";
+
       await refreshUploads();
       await loadSummary();
       await loadEvidence();
-
     } catch (e) {
-      if (out) out.textContent = `Network error: ${e?.message || e}`;
+      appendMessage("bot", `Network error: ${e?.message || e}`);
     }
   });
+}
+
+const newSessionBtn = document.getElementById("newSession");
+if (newSessionBtn) {
+  newSessionBtn.addEventListener("click", async () => {
+    await startNewSession();
+  });
+}
+
+const deleteSessionBtn = document.getElementById("deleteSession");
+if (deleteSessionBtn) {
+  deleteSessionBtn.addEventListener("click", async () => {
+    await deleteCurrentSession();
+  });
+}
+
+if (sessionId) {
+  setStatus(`Session: ${sessionId}`);
+  refreshUploads();
+  loadSummary();
+  loadEvidence();
 }

@@ -6,20 +6,22 @@
     <title>CPL Assistant</title>
     <style>
       :root {
-        --bg: #F6F8FB;
+        --bg: #F8F9FA;
         --card: #FFFFFF;
-        --border: #E6EAF2;
-        --text: #0F172A;
-        --muted: #475569;
-        --primary: #2563EB;
-        --primary-600: #1D4ED8;
+        --border: #E5EAF3;
+        --text: #1D2129;
+        --muted: #4E5969;
+        --primary: #165DFF;
+        --primary-600: #0E42D2;
+        --primary-soft: #E8F3FF;
         --danger: #DC2626;
         --danger-600: #B91C1C;
-        --shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
-        --radius: 12px;
+        --shadow: 0 10px 30px rgba(22, 93, 255, 0.08);
+        --radius: 16px;
       }
 
       * { box-sizing: border-box; }
+
       body {
         margin: 0;
         background: var(--bg);
@@ -28,21 +30,43 @@
       }
 
       .container {
-        max-width: 980px;
+        max-width: 1260px;
         margin: 0 auto;
-        padding: 26px 18px 40px;
+        padding: 24px 18px 36px;
+      }
+
+      .topBar {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 16px;
+        flex-wrap: wrap;
+        margin-bottom: 18px;
       }
 
       .pageTitle {
         margin: 0;
-        font-size: 28px;
+        font-size: 30px;
         line-height: 1.15;
       }
 
       .subTitle {
-        margin: 8px 0 18px;
+        margin: 8px 0 0;
         color: var(--muted);
         font-size: 14px;
+      }
+
+      .layout {
+        display: grid;
+        grid-template-columns: minmax(0, 1.6fr) minmax(300px, 0.9fr);
+        gap: 18px;
+        align-items: start;
+      }
+
+      @media (max-width: 980px) {
+        .layout {
+          grid-template-columns: 1fr;
+        }
       }
 
       .card {
@@ -53,33 +77,33 @@
         padding: 16px;
       }
 
-      .card + .card { margin-top: 16px; }
+      .chatCard {
+        padding: 0;
+        overflow: hidden;
+      }
 
-      .cardHeader {
+      .chatHeader {
         display: flex;
         align-items: center;
         justify-content: space-between;
         gap: 12px;
-        margin-bottom: 10px;
+        padding: 16px 16px 14px;
+        border-bottom: 1px solid var(--border);
+        background: #fff;
       }
 
-      .cardTitle {
-        font-size: 16px;
-        font-weight: 700;
+      .chatHeaderTitle {
         margin: 0;
+        font-size: 17px;
+        font-weight: 700;
       }
 
-      .cardHint {
-        font-size: 12px;
-        color: var(--muted);
+      .chatHeaderHint {
         margin: 4px 0 0;
+        color: var(--muted);
+        font-size: 12px;
       }
 
-      .status {
-        font-size: 12px;
-        color: var(--muted);
-        white-space: nowrap;
-      }
       .sessionBar {
         display: flex;
         align-items: center;
@@ -88,34 +112,12 @@
         justify-content: flex-end;
       }
 
-      textarea {
-        width: 100%;
-        min-height: 140px;
-        padding: 12px;
-        border: 1px solid var(--border);
-        border-radius: 10px;
-        outline: none;
-        resize: vertical;
-        font-size: 14px;
-        line-height: 1.35;
-        background: #fff;
-      }
-
-      textarea:focus {
-        border-color: rgba(37, 99, 235, 0.6);
-        box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
-      }
-
-      .row {
-        display: flex;
-        gap: 10px;
-        align-items: center;
-        flex-wrap: wrap;
-      }
-
-      input[type="file"] {
-        flex: 1;
-        min-width: 240px;
+      .status {
+        font-size: 12px;
+        color: var(--muted);
+        max-width: 220px;
+        text-align: right;
+        word-break: break-word;
       }
 
       .btn {
@@ -123,15 +125,17 @@
         border: 1px solid var(--border);
         background: #fff;
         color: var(--text);
-        padding: 10px 12px;
+        padding: 10px 13px;
         border-radius: 10px;
         font-weight: 600;
         font-size: 14px;
         cursor: pointer;
+        transition: 0.18s ease;
       }
 
-      .btn:hover { background: #F8FAFF; }
-      .btn:active { transform: translateY(0.5px); }
+      .btn:hover {
+        background: #F7FAFF;
+      }
 
       .btnPrimary {
         border-color: transparent;
@@ -139,7 +143,19 @@
         color: #fff;
       }
 
-      .btnPrimary:hover { background: var(--primary-600); }
+      .btnPrimary:hover {
+        background: var(--primary-600);
+      }
+
+      .btnSecondary {
+        border: 1px solid rgba(22, 93, 255, 0.16);
+        background: var(--primary-soft);
+        color: var(--primary);
+      }
+
+      .btnSecondary:hover {
+        background: #DCEBFF;
+      }
 
       .btnDanger {
         border-color: transparent;
@@ -147,32 +163,130 @@
         color: #fff;
       }
 
-      .btnDanger:hover { background: var(--danger-600); }
+      .btnDanger:hover {
+        background: var(--danger-600);
+      }
 
-      #uploadsList {
+      .chatMessages {
+        height: 540px;
+        overflow-y: auto;
+        padding: 18px 16px;
+        background: linear-gradient(to bottom, #FAFBFD 0%, #F8F9FA 100%);
+      }
+
+      .emptyState {
+        color: var(--muted);
+        font-size: 14px;
+        text-align: center;
+        padding: 80px 20px;
+      }
+
+      .messageRow {
+        display: flex;
+        margin-bottom: 12px;
+      }
+
+      .messageRow.user {
+        justify-content: flex-end;
+      }
+
+      .messageRow.bot {
+        justify-content: flex-start;
+      }
+
+      .bubble {
+        max-width: 78%;
+        padding: 12px 14px;
+        border-radius: 16px;
+        line-height: 1.5;
+        font-size: 14px;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+
+      .bubble.user {
+        background: var(--primary);
+        color: #fff;
+        border-bottom-right-radius: 6px;
+      }
+
+      .bubble.bot {
+        background: #fff;
+        color: var(--text);
         border: 1px solid var(--border);
-        border-radius: 10px;
-        padding: 12px;
+        border-bottom-left-radius: 6px;
+      }
+
+      .bubble.system {
+        background: #FFF7ED;
+        color: #9A3412;
+        border: 1px solid #FED7AA;
+      }
+
+      .composer {
+        padding: 14px 16px 16px;
+        border-top: 1px solid var(--border);
         background: #fff;
       }
 
-      .uploadRow {
+      .composerRow {
         display: flex;
-        gap: 12px;
-        align-items: center;
-        margin: 8px 0;
+        gap: 10px;
+        align-items: flex-end;
       }
 
-      .uploadName {
+      .composer textarea {
         flex: 1;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
+        min-height: 54px;
+        max-height: 160px;
+        resize: vertical;
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        padding: 12px 14px;
         font-size: 14px;
+        line-height: 1.5;
+        outline: none;
+        background: #fff;
+      }
+
+      .composer textarea:focus {
+        border-color: rgba(22, 93, 255, 0.45);
+        box-shadow: 0 0 0 3px rgba(22, 93, 255, 0.12);
+      }
+
+      .sideCol {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+      }
+
+      .cardTitle {
+        font-size: 16px;
+        font-weight: 700;
+        margin: 0 0 4px;
+      }
+
+      .cardHint {
+        margin: 0 0 12px;
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.45;
+      }
+
+      pre {
+        white-space: pre-wrap;
+        margin: 0;
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 12px;
+        background: #fff;
+        font-size: 13px;
+        line-height: 1.5;
+        color: var(--text);
       }
 
       .summaryBox {
-        min-height: 110px;
+        min-height: 120px;
       }
 
       .evidenceList {
@@ -180,8 +294,9 @@
         padding: 0;
         margin: 0;
         border: 1px solid var(--border);
-        border-radius: 10px;
+        border-radius: 12px;
         background: #fff;
+        overflow: hidden;
       }
 
       .evidenceItem {
@@ -198,7 +313,7 @@
         margin-bottom: 6px;
         padding: 3px 8px;
         border-radius: 999px;
-        background: #EFF6FF;
+        background: var(--primary-soft);
         color: var(--primary);
         font-size: 12px;
         font-weight: 700;
@@ -219,110 +334,152 @@
       .evidenceDetails {
         font-size: 13px;
         color: var(--text);
-        line-height: 1.4;
+        line-height: 1.45;
       }
 
-      pre {
-        white-space: pre-wrap;
-        border: 1px solid var(--border);
-        border-radius: 10px;
-        padding: 12px;
-        margin: 0;
-        background: #fff;
+      .uploadRow {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        margin: 8px 0;
+      }
+
+      .uploadName {
+        flex: 1;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-size: 14px;
+      }
+
+      .uploadActions {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+      }
+
+      .uploadActions a {
+        color: var(--primary);
         font-size: 13px;
-        line-height: 1.35;
+        text-decoration: none;
+      }
+
+      .uploadActions a:hover {
+        text-decoration: underline;
+      }
+
+      .delUpload {
+        appearance: none;
+        border: none;
+        background: transparent;
+        color: var(--danger);
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+      }
+
+      .fileRow {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        flex-wrap: wrap;
+      }
+
+      input[type="file"] {
+        flex: 1;
+        min-width: 220px;
       }
 
       .footerNote {
         margin-top: 10px;
         color: var(--muted);
         font-size: 12px;
-      }
-
-      .sectionLabel {
-        margin: 10px 0 8px;
-        color: var(--muted);
-        font-size: 12px;
-        font-weight: 600;
-        letter-spacing: 0.2px;
+        line-height: 1.4;
       }
     </style>
   </head>
   <body>
     <div class="container">
-      <h1 class="pageTitle">CPL Assistant</h1>
-      <p class="subTitle">Prototype workspace for chat + evidence uploads (session-based).</p>
-
-      <div class="card">
-        <div class="cardHeader">
-          <div>
-            <h2 class="cardTitle">Chat</h2>
-            <p class="cardHint">Messages are stored per session and used as conversation context.</p>
-          </div>
-          <div class="sessionBar">
-            <div class="status" id="status"></div>
-            <button id="newSession" class="btn">New Session</button>
-            <button id="deleteSession" class="btn btnDanger">Delete Session</button>
-          </div>
+      <div class="topBar">
+        <div>
+          <h1 class="pageTitle">CPL Assistant</h1>
+          <p class="subTitle">
+            Certification-based course waiver intake with session-based chat and evidence collection.
+          </p>
         </div>
-
-        <textarea id="msg" placeholder="Ask something..."></textarea>
-        <div style="height: 10px;"></div>
-        <div class="row">
-          <button id="send" class="btn btnPrimary">Send</button>
-        </div>
-
-        <div style="height: 14px;"></div>
-        <div class="sectionLabel">Response</div>
-        <pre id="out"></pre>
       </div>
 
-      <div class="card">
-        <div class="cardHeader">
-          <div>
+      <div class="layout">
+        <div class="card chatCard">
+          <div class="chatHeader">
+            <div>
+              <h2 class="chatHeaderTitle">Chat</h2>
+              <p class="chatHeaderHint">
+                Submit your certification waiver information step by step.
+              </p>
+            </div>
+
+            <div class="sessionBar">
+              <div class="status" id="status"></div>
+              <button id="newSession" class="btn btnSecondary">New Session</button>
+              <button id="deleteSession" class="btn btnDanger">Delete Session</button>
+            </div>
+          </div>
+
+          <div id="chatMessages" class="chatMessages">
+            <div class="emptyState">
+              Start a message to begin your certification waiver intake request.
+            </div>
+          </div>
+
+          <div class="composer">
+            <div class="composerRow">
+              <textarea id="msg" placeholder="Type your message..."></textarea>
+              <button id="send" class="btn btnPrimary">Send</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="sideCol">
+          <div class="card">
             <h2 class="cardTitle">Case Summary</h2>
-            <p class="cardHint">AI-generated session summary based on the conversation and uploaded file metadata.</p>
+            <p class="cardHint">
+              AI-generated summary for the current session.
+            </p>
+            <pre id="summaryBox" class="summaryBox">No summary yet.</pre>
           </div>
-        </div>
 
-        <div class="sectionLabel">Summary</div>
-        <pre id="summaryBox" class="summaryBox">No summary yet.</pre>
-      </div>
-
-      <div class="card">
-        <div class="cardHeader">
-          <div>
+          <div class="card">
             <h2 class="cardTitle">Structured Evidence</h2>
-            <p class="cardHint">AI-extracted evidence items for the current session.</p>
+            <p class="cardHint">
+              Evidence items extracted for the current session.
+            </p>
+            <ul id="evidenceList" class="evidenceList">
+              <li class="evidenceItem">
+                <div class="evidenceDetails">No evidence yet.</div>
+              </li>
+            </ul>
           </div>
-        </div>
 
-        <div class="sectionLabel">Evidence Items</div>
-        <ul id="evidenceList" class="evidenceList">
-          <li class="evidenceItem">
-            <div class="evidenceDetails">No evidence yet.</div>
-          </li>
-        </ul>
-      </div>
-
-      <div class="card">
-        <div class="cardHeader">
-          <div>
+          <div class="card">
             <h2 class="cardTitle">Evidence Upload</h2>
-            <p class="cardHint">Upload PDFs, images, or documents for the current session.</p>
+            <p class="cardHint">
+              Upload supporting documents for the current waiver session.
+            </p>
+
+            <div class="fileRow">
+              <input id="file" type="file" />
+              <button id="upload" class="btn">Upload</button>
+            </div>
+
+            <div style="height: 12px;"></div>
+            <div id="uploadsList">No session.</div>
+
+            <div class="footerNote">
+              Files are attached to the current session. Older uploaded files may not persist across redeploys.
+            </div>
           </div>
         </div>
-
-        <div class="row">
-          <input id="file" type="file" />
-          <button id="upload" class="btn">Upload</button>
-        </div>
-
-        <div style="height: 12px;"></div>
-        <div class="sectionLabel">Uploads (current session)</div>
-        <div id="uploadsList"></div>
-
-        <div class="footerNote">Note: Local file uploads on App Service may not persist across redeploys.</div>
       </div>
     </div>
 
