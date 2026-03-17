@@ -164,6 +164,30 @@ def parse_json_payload(text: str):
 
 
 # ===============================
+# Upload Session File Context Helper
+# ===============================
+def build_upload_context(session_id: str):
+    items = list_uploads_with_file_state(session_id, UPLOAD_DIR)
+    if not items:
+        return "No uploaded files for this session."
+
+    lines = []
+    for item in items:
+        original_name = item.get("original_name") or item.get(
+            "stored_name") or "unknown"
+        content_type = item.get("content_type") or "unknown"
+        size_bytes = item.get("size_bytes")
+        exists_on_disk = item.get("exists_on_disk")
+        created_at = item.get("created_at")
+
+        lines.append(
+            f"- file: {original_name}; type: {content_type}; size_bytes: {size_bytes}; exists_on_disk: {exists_on_disk}; created_at: {created_at}"
+        )
+
+    return "Uploaded files for this session:\n" + "\n".join(lines)
+
+
+# ===============================
 # Static File Route (bulletproof)
 # ===============================
 @app.get("/static/<path:filename>")
@@ -555,8 +579,9 @@ def api_chat():
         history_rows = get_chat_messages(session_id, limit=20)
         history = [{"role": r["role"], "content": r["content"]}
                    for r in history_rows]
+        upload_context = build_upload_context(session_id)
 
-        system_text = """
+        system_text = f"""
 You are a university Credit for Prior Learning (CPL) assistant designed ONLY to collect information for certification-based course waiver requests.
 
 Your role is an INTAKE ASSISTANT, not an advisor.
@@ -815,6 +840,14 @@ IMPORTANT BEHAVIOR RULE
 Always behave like a guided intake form rather than a conversational advisor.
 
 Your only role is to collect the information required for a certification waiver request.
+
+SESSION FILE CONTEXT
+
+Use the uploaded file metadata below as additional intake context when it is relevant.
+Do not invent file contents that are not explicitly available.
+You may refer to filenames and file presence as supporting evidence context.
+
+{upload_context}
 """
         messages = [{"role": "system", "content": system_text}] + history
 
@@ -843,6 +876,9 @@ New user message:
 
 New assistant response:
 {answer}
+
+Uploaded file metadata for this session:
+{upload_context}
 
 Write an updated summary in plain English.
 Keep it concise and useful for internal review.
@@ -899,6 +935,9 @@ Latest user message:
 
 Latest assistant response:
 {answer}
+
+Uploaded file metadata for this session:
+{upload_context}
 """
 
         evidence_response = client.chat.completions.create(
