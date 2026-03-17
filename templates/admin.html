@@ -152,6 +152,47 @@
       .muted {
         color: var(--muted);
       }
+
+      .sessionTools {
+        margin-top: 16px;
+        padding: 14px;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        background: #fff;
+      }
+
+      .fieldLabel {
+        display: block;
+        margin-bottom: 8px;
+        font-size: 13px;
+        font-weight: 700;
+        color: var(--text);
+      }
+
+      .fieldRow {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        align-items: center;
+      }
+
+      .input {
+        flex: 1;
+        min-width: 260px;
+        padding: 10px 12px;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        font-size: 14px;
+        color: var(--text);
+        background: #fff;
+      }
+
+      .helperText {
+        margin-top: 8px;
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.4;
+      }
     </style>
   </head>
   <body>
@@ -194,6 +235,24 @@
           <a class="btn" href="/health">Health</a>
           <a class="btn" href="/dbcheck">DB Check</a>
           <a class="btn" href="/api/dbinfo" target="_blank" rel="noopener">DB Info</a>
+          <a class="btn" href="/setup-db" target="_blank" rel="noopener">Setup DB</a>
+        </div>
+
+        <div class="sessionTools">
+          <label class="fieldLabel" for="sessionIdInput">Session ID tools</label>
+          <div class="fieldRow">
+            <input
+              id="sessionIdInput"
+              class="input"
+              type="text"
+              placeholder="Enter session_id to open Summary or Evidence API"
+            />
+            <a class="btn" href="#" id="openSummaryApi" target="_blank" rel="noopener">Open Summary API</a>
+            <a class="btn" href="#" id="openEvidenceApi" target="_blank" rel="noopener">Open Evidence API</a>
+          </div>
+          <div class="helperText">
+            Paste a real session_id from the chat page or DB info, then open the corresponding API endpoint directly.
+          </div>
         </div>
 
         <div class="meta">
@@ -201,6 +260,44 @@
           This page reads the current runtime configuration and SQL required-mode status.
         </div>
       </div>
-    </div>
+</div>
+  <script>
+    const sessionIdInput = document.getElementById("sessionIdInput");
+    const openSummaryApi = document.getElementById("openSummaryApi");
+    const openEvidenceApi = document.getElementById("openEvidenceApi");
+
+    function getSessionIdValue() {
+      return (sessionIdInput?.value || "").trim();
+    }
+
+    function updateSessionLinks() {
+      const sessionId = getSessionIdValue();
+      if (!sessionId) {
+        openSummaryApi.setAttribute("href", "#");
+        openEvidenceApi.setAttribute("href", "#");
+        return;
+      }
+
+      openSummaryApi.setAttribute("href", `/api/summary/${encodeURIComponent(sessionId)}`);
+      openEvidenceApi.setAttribute("href", `/api/evidence/${encodeURIComponent(sessionId)}`);
+    }
+
+    sessionIdInput?.addEventListener("input", updateSessionLinks);
+    updateSessionLinks();
+
+    openSummaryApi?.addEventListener("click", function (event) {
+      if (!getSessionIdValue()) {
+        event.preventDefault();
+        alert("Please enter a session_id first.");
+      }
+    });
+
+    openEvidenceApi?.addEventListener("click", function (event) {
+      if (!getSessionIdValue()) {
+        event.preventDefault();
+        alert("Please enter a session_id first.");
+      }
+    });
+  </script>
   </body>
 </html>
