@@ -441,8 +441,38 @@ def api_get_evidence(session_id):
 
 
 # ===============================
+# Chat History API
+# ===============================
+
+@app.get("/api/messages/<session_id>")
+def api_get_messages(session_id):
+    try:
+        ensure_schema()
+        rows = get_chat_messages(session_id, limit=100)
+
+        items = []
+        for row in rows:
+            items.append({
+                "role": row.get("role"),
+                "content": row.get("content"),
+                "created_at": str(row.get("created_at")) if row.get("created_at") else None,
+            })
+
+        return jsonify({
+            "status": "ok",
+            "items": items,
+        })
+    except Exception as e:
+        app.logger.exception("Get messages failed")
+        return jsonify({
+            "error": f"Get messages failed: {type(e).__name__}",
+            "details": str(e)
+        }), 500
+
+# ===============================
 # Sessions
 # ===============================
+
 
 @app.post("/api/sessions")
 def create_session():

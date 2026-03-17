@@ -66,6 +66,47 @@ function appendMessage(role, text) {
   scrollChatToBottom();
 }
 
+function renderChatHistory(items) {
+  clearChatMessages();
+
+  if (!items || items.length === 0) {
+    return;
+  }
+
+  items.forEach((item) => {
+    const role = item.role === "user" ? "user" : "bot";
+    appendMessage(role, item.content || "");
+  });
+}
+
+async function loadChatHistory() {
+  if (!sessionId) {
+    clearChatMessages();
+    return;
+  }
+
+  try {
+    const res = await fetch(`/api/messages/${sessionId}`);
+    const data = await res.json();
+
+    if (!res.ok) {
+      clearChatMessages();
+      appendMessage(
+        "bot",
+        data?.error
+          ? `History error: ${data.error}${data.details ? " - " + data.details : ""}`
+          : `History error: ${res.status}`
+      );
+      return;
+    }
+
+    renderChatHistory(data.items || []);
+  } catch (e) {
+    clearChatMessages();
+    appendMessage("bot", `Network error: ${e?.message || e}`);
+  }
+}
+
 function appendTemporaryThinking() {
   const box = getChatMessagesEl();
   if (!box) return null;
@@ -183,9 +224,10 @@ async function ensureSession() {
   localStorage.setItem(SESSION_STORAGE_KEY, sessionId);
   setStatus(`Session: ${sessionId}`);
 
-  refreshUploads();
-  loadSummary();
-  loadEvidence();
+  await loadChatHistory();
+  await refreshUploads();
+  await loadSummary();
+  await loadEvidence();
   return sessionId;
 }
 
@@ -404,7 +446,7 @@ async function sendMessage() {
       return;
     }
 
-    appendMessage("bot", data?.answer ?? text);
+    await loadChatHistory();
     await loadSummary();
     await loadEvidence();
   } catch (e) {
@@ -495,6 +537,7 @@ if (deleteSessionBtn) {
 
 if (sessionId) {
   setStatus(`Session: ${sessionId}`);
+  loadChatHistory();
   refreshUploads();
   loadSummary();
   loadEvidence();
