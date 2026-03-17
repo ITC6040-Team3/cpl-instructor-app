@@ -261,6 +261,7 @@ def versions():
 # ===============================
 # ✅ DB CHECK ROUTE (still useful for debugging)
 # ===============================
+
 @app.get("/dbcheck")
 def dbcheck():
     try:
@@ -274,6 +275,29 @@ def dbcheck():
                 "details": str(e),
             }
         ), 500
+
+
+# Route for manually running the schema SQL file
+@app.get("/setup-db")
+def setup_db():
+    try:
+        if not os.path.isfile(SCHEMA_SQL_PATH):
+            return jsonify({
+                "status": "error",
+                "message": f"Schema file not found: {SCHEMA_SQL_PATH}"
+            }), 500
+
+        run_sql_file(SCHEMA_SQL_PATH)
+        return jsonify({
+            "status": "success",
+            "message": "Database tables created successfully."
+        })
+    except Exception as e:
+        app.logger.exception("Setup DB failed")
+        return jsonify({
+            "status": "error",
+            "message": str(e)
+        }), 500
 
 
 @app.get("/api/dbinfo")
