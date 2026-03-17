@@ -10,6 +10,8 @@ from chat_storage import (
     ensure_chat_session,
     add_chat_message,
     get_chat_messages,
+    save_summary,
+    get_summary,
 )
 from file_storage import (
     save_file_to_disk,
@@ -276,6 +278,27 @@ def dbinfo():
         return jsonify({
             "status": "error",
             "error": f"{type(e).__name__}",
+            "details": str(e)
+        }), 500
+
+
+# ===============================
+# AI-Generated Session Summary API
+# ===============================
+
+@app.get("/api/summary/<session_id>")
+def api_get_summary(session_id):
+    try:
+        ensure_schema()
+        summary = get_summary(session_id)
+        return jsonify({
+            "status": "ok",
+            "summary": summary,
+        })
+    except Exception as e:
+        app.logger.exception("Get summary failed")
+        return jsonify({
+            "error": f"Get summary failed: {type(e).__name__}",
             "details": str(e)
         }), 500
 
@@ -718,7 +741,51 @@ Your only role is to collect the information required for a certification waiver
         answer = (response.choices[0].message.content or "").strip()
         add_chat_message(session_id, "assistant", answer)
 
-        return jsonify({"answer": answer})
+        existing_summary_row = get_summary(session_id)
+        existing_summary = ""
+        if existing_summary_row and existing_summary_row.get("summary_text"):
+            existing_summary = existing_summary_row["summary_text"]
+
+        summary_prompt = f"""
+You are updating a concise structured summary for a university CPL intake session.
+
+Current summary:
+{existing_summary}
+
+New user message:
+{user_message}
+
+New assistant response:
+{answer}
+
+Write an updated summary in plain English.
+Keep it concise and useful for internal review.
+Include:
+- target course (if mentioned)
+- certification details collected so far
+- evidence provided so far
+- missing information still needed
+
+Do not include extra commentary.
+"""
+
+        summary_response = client.chat.completions.create(
+            model=deployment,
+            messages=[
+                {"role": "system", "content": "You generate concise internal summaries for CPL intake sessions."},
+                {"role": "user", "content": summary_prompt},
+            ],
+            temperature=0.2,
+        )
+
+        summary_text = (
+            summary_response.choices[0].message.content or "").strip()
+        save_summary(session_id, summary_text)
+
+        return jsonify({
+            "answer": answer,
+            "summary": summary_text,
+        })
 
     except Exception as e:
         app.logger.exception("Chat failed")
