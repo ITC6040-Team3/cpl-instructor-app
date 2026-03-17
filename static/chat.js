@@ -12,6 +12,8 @@ if (sessionId) {
 
 if (sessionId) {
   refreshUploads();
+  loadSummary();
+  loadEvidence();
 }
 
 async function ensureSession() {
@@ -29,6 +31,8 @@ async function ensureSession() {
   localStorage.setItem(SESSION_STORAGE_KEY, sessionId);
   setStatus(`Session: ${sessionId}`);
   refreshUploads();
+  loadSummary();
+  loadEvidence();
   return sessionId;
 }
 
@@ -76,6 +80,94 @@ async function refreshUploads() {
   }
 }
 
+async function loadSummary() {
+  const box = document.getElementById("summaryBox");
+  if (!box) return;
+
+  if (!sessionId) {
+    box.textContent = "No summary yet.";
+    return;
+  }
+
+  try {
+    const res = await fetch(`/api/summary/${sessionId}`);
+    const data = await res.json();
+
+    if (!res.ok) {
+      box.textContent = data?.error
+        ? `Error: ${data.error}${data.details ? " - " + data.details : ""}`
+        : `Error: ${res.status}`;
+      return;
+    }
+
+    const summaryText = data?.summary?.summary_text;
+    box.textContent = summaryText || "No summary yet.";
+  } catch (e) {
+    box.textContent = `Network error: ${e?.message || e}`;
+  }
+}
+
+async function loadEvidence() {
+  const list = document.getElementById("evidenceList");
+  if (!list) return;
+
+  if (!sessionId) {
+    list.innerHTML = `
+      <li class="evidenceItem">
+        <div class="evidenceDetails">No evidence yet.</div>
+      </li>
+    `;
+    return;
+  }
+
+  try {
+    const res = await fetch(`/api/evidence/${sessionId}`);
+    const data = await res.json();
+
+    if (!res.ok) {
+      list.innerHTML = `
+        <li class="evidenceItem">
+          <div class="evidenceDetails">${data?.error ? `Error: ${data.error}${data.details ? " - " + data.details : ""}` : `Error: ${res.status}`}</div>
+        </li>
+      `;
+      return;
+    }
+
+    const items = data.items || [];
+    if (items.length === 0) {
+      list.innerHTML = `
+        <li class="evidenceItem">
+          <div class="evidenceDetails">No evidence yet.</div>
+        </li>
+      `;
+      return;
+    }
+
+    list.innerHTML = items.map((item) => {
+      const kind = item.kind || "unknown";
+      const title = item.title || "Untitled";
+      const org = item.org || "";
+      const dates = [item.start_date, item.end_date].filter(Boolean).join(" → ");
+      const details = item.details || "";
+
+      return `
+        <li class="evidenceItem">
+          <div class="evidenceKind">${kind}</div>
+          <div class="evidenceTitle">${title}</div>
+          <div class="evidenceMeta">${org || "No organization"}${dates ? ` | ${dates}` : ""}</div>
+          <div class="evidenceDetails">${details || "No details."}</div>
+        </li>
+      `;
+    }).join("");
+  } catch (e) {
+    list.innerHTML = `
+      <li class="evidenceItem">
+        <div class="evidenceDetails">Network error: ${e?.message || e}</div>
+      </li>
+    `;
+  }
+}
+
 document.addEventListener("click", async (ev) => {
   const target = ev.target;
   if (!target || !target.classList || !target.classList.contains("delUpload")) return;
@@ -111,6 +203,8 @@ document.addEventListener("click", async (ev) => {
 
     if (out) out.textContent = "Deleted.";
     await refreshUploads();
+    await loadSummary();
+    await loadEvidence();
 
   } catch (e) {
     if (out) out.textContent = `Network error: ${e?.message || e}`;
@@ -149,6 +243,8 @@ document.getElementById("send").addEventListener("click", async () => {
     }
 
     out.textContent = data?.answer ?? text;
+    await loadSummary();
+    await loadEvidence();
   } catch (e) {
     out.textContent = `Network error: ${e?.message || e}`;
   }
@@ -199,6 +295,8 @@ if (uploadBtn) {
 
       if (fileEl) fileEl.value = "";
       await refreshUploads();
+      await loadSummary();
+      await loadEvidence();
 
     } catch (e) {
       if (out) out.textContent = `Network error: ${e?.message || e}`;

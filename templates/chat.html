@@ -164,6 +164,57 @@
         font-size: 14px;
       }
 
+      .summaryBox {
+        min-height: 110px;
+      }
+
+      .evidenceList {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        background: #fff;
+      }
+
+      .evidenceItem {
+        padding: 12px;
+        border-bottom: 1px solid var(--border);
+      }
+
+      .evidenceItem:last-child {
+        border-bottom: none;
+      }
+
+      .evidenceKind {
+        display: inline-block;
+        margin-bottom: 6px;
+        padding: 3px 8px;
+        border-radius: 999px;
+        background: #EFF6FF;
+        color: var(--primary);
+        font-size: 12px;
+        font-weight: 700;
+      }
+
+      .evidenceTitle {
+        font-size: 14px;
+        font-weight: 700;
+        margin-bottom: 4px;
+      }
+
+      .evidenceMeta {
+        font-size: 12px;
+        color: var(--muted);
+        margin-bottom: 4px;
+      }
+
+      .evidenceDetails {
+        font-size: 13px;
+        color: var(--text);
+        line-height: 1.4;
+      }
+
       pre {
         white-space: pre-wrap;
         border: 1px solid var(--border);
@@ -213,6 +264,34 @@
         <div style="height: 14px;"></div>
         <div class="sectionLabel">Response</div>
         <pre id="out"></pre>
+      </div>
+
+      <div class="card">
+        <div class="cardHeader">
+          <div>
+            <h2 class="cardTitle">Case Summary</h2>
+            <p class="cardHint">AI-generated session summary based on the conversation and uploaded file metadata.</p>
+          </div>
+        </div>
+
+        <div class="sectionLabel">Summary</div>
+        <pre id="summaryBox" class="summaryBox">No summary yet.</pre>
+      </div>
+
+      <div class="card">
+        <div class="cardHeader">
+          <div>
+            <h2 class="cardTitle">Structured Evidence</h2>
+            <p class="cardHint">AI-extracted evidence items for the current session.</p>
+          </div>
+        </div>
+
+        <div class="sectionLabel">Evidence Items</div>
+        <ul id="evidenceList" class="evidenceList">
+          <li class="evidenceItem">
+            <div class="evidenceDetails">No evidence yet.</div>
+          </li>
+        </ul>
       </div>
 
       <div class="card">
