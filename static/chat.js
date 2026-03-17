@@ -6,6 +6,81 @@ function setStatus(text) {
   if (el) el.textContent = text || "";
 }
 
+function resetSessionView() {
+  const msgEl = document.getElementById("msg");
+  const outEl = document.getElementById("out");
+  const summaryBox = document.getElementById("summaryBox");
+  const uploadsList = document.getElementById("uploadsList");
+  const evidenceList = document.getElementById("evidenceList");
+  const fileEl = document.getElementById("file");
+
+  if (msgEl) msgEl.value = "";
+  if (outEl) outEl.textContent = "";
+  if (summaryBox) summaryBox.textContent = "No summary yet.";
+  if (uploadsList) uploadsList.textContent = "No session.";
+  if (fileEl) fileEl.value = "";
+  if (evidenceList) {
+    evidenceList.innerHTML = `
+      <li class="evidenceItem">
+        <div class="evidenceDetails">No evidence yet.</div>
+      </li>
+    `;
+  }
+}
+
+async function startNewSession() {
+  localStorage.removeItem(SESSION_STORAGE_KEY);
+  sessionId = null;
+  resetSessionView();
+  setStatus("");
+
+  try {
+    await ensureSession();
+  } catch (e) {
+    const outEl = document.getElementById("out");
+    if (outEl) outEl.textContent = `Network error: ${e?.message || e}`;
+  }
+}
+
+async function deleteCurrentSession() {
+  const outEl = document.getElementById("out");
+
+  if (!sessionId) {
+    await startNewSession();
+    return;
+  }
+
+  try {
+    if (outEl) outEl.textContent = "Deleting session...";
+
+    const res = await fetch(`/api/session/${sessionId}`, {
+      method: "DELETE",
+    });
+
+    const text = await res.text();
+    let data = null;
+    try { data = JSON.parse(text); } catch (_) {}
+
+    if (!res.ok) {
+      if (outEl) {
+        outEl.textContent = data?.error
+          ? `Delete session error (${res.status}): ${data.error}${data.details ? " - " + data.details : ""}`
+          : `Delete session error (${res.status}): ${text}`;
+      }
+      return;
+    }
+
+    localStorage.removeItem(SESSION_STORAGE_KEY);
+    sessionId = null;
+    resetSessionView();
+    if (outEl) outEl.textContent = "Session deleted.";
+    setStatus("");
+    await ensureSession();
+  } catch (e) {
+    if (outEl) outEl.textContent = `Network error: ${e?.message || e}`;
+  }
+}
+
 if (sessionId) {
   setStatus(`Session: ${sessionId}`);
 }
@@ -14,6 +89,20 @@ if (sessionId) {
   refreshUploads();
   loadSummary();
   loadEvidence();
+}
+
+const newSessionBtn = document.getElementById("newSession");
+if (newSessionBtn) {
+  newSessionBtn.addEventListener("click", async () => {
+    await startNewSession();
+  });
+}
+
+const deleteSessionBtn = document.getElementById("deleteSession");
+if (deleteSessionBtn) {
+  deleteSessionBtn.addEventListener("click", async () => {
+    await deleteCurrentSession();
+  });
 }
 
 async function ensureSession() {

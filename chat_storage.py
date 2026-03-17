@@ -123,6 +123,16 @@ def delete_chat_session(session_id: str):
     )
 
     execute_non_query(
+        "DELETE FROM dbo.evidence_items WHERE session_id = ?",
+        (session_id,),
+    )
+
+    execute_non_query(
+        "DELETE FROM dbo.uploads WHERE session_id = ?",
+        (session_id,),
+    )
+
+    execute_non_query(
         "DELETE FROM dbo.sessions WHERE session_id = ?",
         (session_id,),
     )

@@ -13,6 +13,7 @@ from chat_storage import (
     get_chat_messages,
     save_summary,
     get_summary,
+    delete_chat_session,
 )
 from file_storage import (
     save_file_to_disk,
@@ -416,12 +417,63 @@ def api_get_evidence(session_id):
 # ===============================
 # Sessions
 # ===============================
+
 @app.post("/api/sessions")
 def create_session():
     ensure_schema()
     sid = str(uuid.uuid4())
     create_chat_session(sid)
     return jsonify({"session_id": sid})
+
+
+# ===============================
+# Delete an entire session and all associated uploaded files
+# ===============================
+@app.delete("/api/session/<session_id>")
+def api_delete_session(session_id):
+    try:
+        ensure_schema()
+
+        session_row = fetch_all(
+            """
+            SELECT session_id
+            FROM dbo.sessions
+            WHERE session_id = ?
+            """,
+            (session_id,),
+        )
+        if not session_row:
+            return jsonify({"error": "Session not found"}), 404
+
+        upload_items = list_uploads_with_file_state(session_id, UPLOAD_DIR)
+        deleted_files = []
+        missing_files = []
+
+        for item in upload_items:
+            stored_name = item.get("stored_name")
+            if not stored_name:
+                continue
+
+            removed = delete_file_from_disk(UPLOAD_DIR, stored_name)
+            if removed:
+                deleted_files.append(stored_name)
+            else:
+                missing_files.append(stored_name)
+
+        delete_chat_session(session_id)
+
+        return jsonify({
+            "status": "ok",
+            "session_id": session_id,
+            "deleted_files": deleted_files,
+            "missing_files": missing_files,
+        })
+    except Exception as e:
+        app.logger.exception("Delete session failed")
+        return jsonify({
+            "error": f"Delete session failed: {type(e).__name__}",
+            "details": str(e)
+        }), 500
 
 
 # ===============================

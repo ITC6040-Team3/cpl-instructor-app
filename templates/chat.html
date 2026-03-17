@@ -80,6 +80,13 @@
         color: var(--muted);
         white-space: nowrap;
       }
+      .sessionBar {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+      }
 
       textarea {
         width: 100%;
@@ -252,7 +259,11 @@
             <h2 class="cardTitle">Chat</h2>
             <p class="cardHint">Messages are stored per session and used as conversation context.</p>
           </div>
-          <div class="status" id="status"></div>
+          <div class="sessionBar">
+            <div class="status" id="status"></div>
+            <button id="newSession" class="btn">New Session</button>
+            <button id="deleteSession" class="btn btnDanger">Delete Session</button>
+          </div>
         </div>
 
         <textarea id="msg" placeholder="Ask something..."></textarea>
