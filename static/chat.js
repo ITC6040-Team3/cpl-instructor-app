@@ -6,6 +6,21 @@ function setStatus(text) {
   if (el) el.textContent = text || "";
 }
 
+function showTopNotice() {
+  const notice = document.getElementById("chatNotice");
+  if (!notice) return;
+
+  setTimeout(() => {
+    notice.classList.add("hide");
+  }, 4500);
+
+  setTimeout(() => {
+    if (notice.parentNode) {
+      notice.remove();
+    }
+  }, 5200);
+}
+
 function getChatMessagesEl() {
   return document.getElementById("chatMessages");
 }
@@ -363,11 +378,9 @@ async function sendMessage() {
   appendMessage("user", msg);
   if (msgEl) msgEl.value = "";
 
-  let thinkingRow = null;
-
   try {
     await ensureSession();
-    thinkingRow = appendTemporaryThinking();
+    appendTemporaryThinking();
 
     const res = await fetch("/api/chat", {
       method: "POST",
@@ -486,3 +499,7 @@ if (sessionId) {
   loadSummary();
   loadEvidence();
 }
+
+document.addEventListener("DOMContentLoaded", () => {
+  showTopNotice();
+});
