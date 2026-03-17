@@ -193,6 +193,20 @@
         font-size: 12px;
         line-height: 1.4;
       }
+      .toolActions {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        margin-top: 10px;
+      }
+
+      .helperList {
+        margin: 8px 0 0;
+        padding-left: 18px;
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.5;
+      }
     </style>
   </head>
   <body>
@@ -250,9 +264,19 @@
             <a class="btn" href="#" id="openSummaryApi" target="_blank" rel="noopener">Open Summary API</a>
             <a class="btn" href="#" id="openEvidenceApi" target="_blank" rel="noopener">Open Evidence API</a>
           </div>
-          <div class="helperText">
-            Paste a real session_id from the chat page or DB info, then open the corresponding API endpoint directly.
+          <div class="toolActions">
+            <button class="btn" type="button" id="useSavedSession">Use saved browser session</button>
+            <button class="btn" type="button" id="clearSessionInput">Clear</button>
           </div>
+          <div class="helperText">
+            Use a real session_id from the chat page, DB info, or your browser's saved session.
+            The buttons below help you jump directly to the correct API endpoints.
+          </div>
+          <ul class="helperList">
+            <li><b>Open Summary API</b> shows the latest AI-generated summary for the selected session.</li>
+            <li><b>Open Evidence API</b> shows the structured evidence items extracted for the selected session.</li>
+            <li><b>Use saved browser session</b> loads the current session stored in localStorage from the chat page.</li>
+          </ul>
         </div>
 
         <div class="meta">
@@ -260,11 +284,14 @@
           This page reads the current runtime configuration and SQL required-mode status.
         </div>
       </div>
-</div>
+    </div>
   <script>
     const sessionIdInput = document.getElementById("sessionIdInput");
     const openSummaryApi = document.getElementById("openSummaryApi");
     const openEvidenceApi = document.getElementById("openEvidenceApi");
+    const useSavedSessionBtn = document.getElementById("useSavedSession");
+    const clearSessionInputBtn = document.getElementById("clearSessionInput");
+    const SESSION_STORAGE_KEY = "cpl_session_id";
 
     function getSessionIdValue() {
       return (sessionIdInput?.value || "").trim();
@@ -282,22 +309,34 @@
       openEvidenceApi.setAttribute("href", `/api/evidence/${encodeURIComponent(sessionId)}`);
     }
 
+    function requireSessionId(event) {
+      if (!getSessionIdValue()) {
+        event.preventDefault();
+        alert("Please enter a session_id first.");
+      }
+    }
+
     sessionIdInput?.addEventListener("input", updateSessionLinks);
+    openSummaryApi?.addEventListener("click", requireSessionId);
+    openEvidenceApi?.addEventListener("click", requireSessionId);
+
+    useSavedSessionBtn?.addEventListener("click", function () {
+      const saved = localStorage.getItem(SESSION_STORAGE_KEY) || "";
+      if (!saved) {
+        alert("No saved browser session was found. Open the chat page first or paste a session_id manually.");
+        return;
+      }
+      sessionIdInput.value = saved;
+      updateSessionLinks();
+    });
+
+    clearSessionInputBtn?.addEventListener("click", function () {
+      sessionIdInput.value = "";
+      updateSessionLinks();
+      sessionIdInput.focus();
+    });
+
     updateSessionLinks();
-
-    openSummaryApi?.addEventListener("click", function (event) {
-      if (!getSessionIdValue()) {
-        event.preventDefault();
-        alert("Please enter a session_id first.");
-      }
-    });
-
-    openEvidenceApi?.addEventListener("click", function (event) {
-      if (!getSessionIdValue()) {
-        event.preventDefault();
-        alert("Please enter a session_id first.");
-      }
-    });
   </script>
-  </body>
+  </body> 
 </html>
