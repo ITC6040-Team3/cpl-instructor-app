@@ -2,10 +2,24 @@ import os
 import sys
 import uuid
 from flask import Flask, render_template, request, jsonify, send_from_directory
-from werkzeug.utils import secure_filename
-import time
 from openai import AzureOpenAI
-import pyodbc
+
+from db_utils import get_sql_connection_string, health_check, run_sql_file, fetch_all
+from chat_storage import (
+    create_chat_session,
+    ensure_chat_session,
+    add_chat_message,
+    get_chat_messages,
+)
+from file_storage import (
+    save_file_to_disk,
+    add_upload_record,
+    list_uploads_with_file_state,
+    get_upload,
+    get_upload_by_stored_name,
+    delete_upload_record,
+    delete_file_from_disk,
+)
 
 # Explicit template folder for Azure App Service reliability
 app = Flask(__name__, template_folder="templates")
@@ -16,44 +30,7 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 app.config["MAX_CONTENT_LENGTH"] = 10 * 1024 * 1024  # 10 MB
 
-ALLOWED_EXTENSIONS = {
-    "pdf", "png", "jpg", "jpeg", "gif",
-    "doc", "docx", "txt"
-}
-
-
-def allowed_file(filename: str) -> bool:
-    if not filename or "." not in filename:
-        return False
-    ext = filename.rsplit(".", 1)[1].lower()
-    return ext in ALLOWED_EXTENSIONS
-
-
-# ===============================
-# ✅ SQL REQUIRED MODE (per-team DB)
-# Supports BOTH:
-#   - App setting: SQL_CONNECTION_STRING
-#   - Azure "Connection strings" blade:
-#       SQLCONNSTR_SQL_CONNECTION_STRING (or SQLAZURECONNSTR_SQL_CONNECTION_STRING)
-# ===============================
-def get_sql_connection_string():
-    # App settings
-    direct = os.getenv("SQL_CONNECTION_STRING")
-    if direct:
-        return direct
-
-    # If set under App Service -> Connection strings with name "SQL_CONNECTION_STRING"
-    # App Service commonly exposes: SQLCONNSTR_<name>
-    prefixed = os.getenv("SQLCONNSTR_SQL_CONNECTION_STRING")
-    if prefixed:
-        return prefixed
-
-    # Some environments may use SQLAZURECONNSTR_
-    prefixed2 = os.getenv("SQLAZURECONNSTR_SQL_CONNECTION_STRING")
-    if prefixed2:
-        return prefixed2
-
-    return None
+SCHEMA_SQL_PATH = os.path.join(BASE_DIR, "sql", "create_tables.sql")
 
 
 REQUIRED_ENV_VARS = [
@@ -115,48 +92,6 @@ def get_client():
         return None, f"Client initialization failed: {type(e).__name__}: {str(e)}"
 
 
-# ===============================
-# DB helpers
-# ===============================
-def get_db_connection():
-    conn_str = get_sql_connection_string()
-    # timeout is seconds; keep short for health checks
-    return pyodbc.connect(conn_str, timeout=10)
-
-
-def db_ping():
-    conn = get_db_connection()
-    try:
-        cur = conn.cursor()
-        cur.execute("SELECT 1")
-        row = cur.fetchone()
-        return int(row[0]) if row else None
-    finally:
-        try:
-            conn.close()
-        except Exception:
-            pass
-
-
-SCHEMA_SQL_PATH = os.path.join(BASE_DIR, "sql", "create_tables.sql")
-
-
-def run_sql_file(path: str):
-    with open(path, "r", encoding="utf-8") as f:
-        sql = f.read()
-
-    conn = get_db_connection()
-    try:
-        cur = conn.cursor()
-        cur.execute(sql)
-        conn.commit()
-    finally:
-        try:
-            conn.close()
-        except Exception:
-            pass
-
-
 _schema_ready = False
 
 
@@ -209,21 +144,20 @@ def admin_page():
         "AZURE_OPENAI_API_KEY": "✅ set" if os.getenv("AZURE_OPENAI_API_KEY") else "❌ missing",
         "AZURE_OPENAI_API_VERSION": os.getenv("AZURE_OPENAI_API_VERSION") or "(default: 2024-12-01-preview)",
         "AZURE_OPENAI_DEPLOYMENT": "✅ set" if os.getenv("AZURE_OPENAI_DEPLOYMENT") else "❌ missing",
-        # SQL required mode
         "SQL_CONNECTION_STRING": "✅ set" if sql_present else "❌ missing (REQUIRED)",
     }
     return render_template("admin.html", status=status)
 
 
 # ===============================
-# ✅ HEALTH = APP + DB READINESS
+# Health + Debug
 # ===============================
 @app.get("/health")
 def health():
     try:
         ensure_schema()
-        result = db_ping()
-        if result != 1:
+        result = health_check()
+        if not result.get("ok"):
             return jsonify({"status": "error", "details": "DB ping returned unexpected result"}), 500
         return jsonify({"status": "ok"})
     except Exception as e:
@@ -237,10 +171,6 @@ def health():
         ), 500
 
 
-# ===============================
-# 🔍 DEBUG SUPERPOWER ROUTE
-# Shows SDK versions for troubleshooting
-# ===============================
 @app.get("/versions")
 def versions():
     try:
@@ -258,14 +188,10 @@ def versions():
         return jsonify({"error": str(e)}), 500
 
 
-# ===============================
-# ✅ DB CHECK ROUTE (still useful for debugging)
-# ===============================
-
 @app.get("/dbcheck")
 def dbcheck():
     try:
-        result = db_ping()
+        result = health_check()
         return jsonify({"status": "DB Connected", "result": result})
     except Exception as e:
         app.logger.exception("DB connection check failed")
@@ -277,7 +203,6 @@ def dbcheck():
         ), 500
 
 
-# Route for manually running the schema SQL file
 @app.get("/setup-db")
 def setup_db():
     try:
@@ -305,51 +230,45 @@ def dbinfo():
     try:
         ensure_schema()
 
-        conn = get_db_connection()
-        try:
-            cur = conn.cursor()
+        tables_rows = fetch_all(
+            """
+            SELECT TABLE_NAME
+            FROM INFORMATION_SCHEMA.TABLES
+            WHERE TABLE_SCHEMA = 'dbo'
+            """
+        )
+        tables = sorted([r["TABLE_NAME"] for r in tables_rows])
 
-            cur.execute("""
-                SELECT TABLE_NAME
-                FROM INFORMATION_SCHEMA.TABLES
-                WHERE TABLE_SCHEMA = 'dbo'
-            """)
-            tables = sorted([r[0] for r in cur.fetchall()])
+        counts = {}
+        for t in ["sessions", "messages", "summaries", "evidence_items", "uploads"]:
+            if t in tables:
+                result = fetch_all(
+                    f"SELECT COUNT(1) AS row_count FROM dbo.{t}")
+                counts[t] = int(result[0]["row_count"]) if result else 0
+            else:
+                counts[t] = None
 
-            def count_rows(table_name: str) -> int:
-                cur.execute(f"SELECT COUNT(1) FROM dbo.{table_name}")
-                row = cur.fetchone()
-                return int(row[0]) if row else 0
-
-            counts = {}
-            for t in ["sessions", "messages", "summaries", "evidence_items", "uploads"]:
-                counts[t] = count_rows(t) if t in tables else None
-
-            cur.execute("""
+        last_message = None
+        if "messages" in tables:
+            rows = fetch_all(
+                """
                 SELECT TOP 1 session_id, role, created_at
                 FROM dbo.messages
                 ORDER BY message_id DESC
-            """)
-            last_msg = cur.fetchone()
-            last_message = None
-            if last_msg:
+                """
+            )
+            if rows:
                 last_message = {
-                    "session_id": str(last_msg[0]),
-                    "role": last_msg[1],
-                    "created_at": str(last_msg[2]),
+                    "session_id": str(rows[0]["session_id"]),
+                    "role": rows[0]["role"],
+                    "created_at": str(rows[0]["created_at"]),
                 }
-
-        finally:
-            try:
-                conn.close()
-            except Exception:
-                pass
 
         return jsonify({
             "status": "ok",
             "tables": tables,
             "row_counts": counts,
-            "last_message": last_message
+            "last_message": last_message,
         })
 
     except Exception as e:
@@ -361,30 +280,20 @@ def dbinfo():
         }), 500
 
 
+# ===============================
+# Sessions
+# ===============================
 @app.post("/api/sessions")
 def create_session():
     ensure_schema()
     sid = str(uuid.uuid4())
-
-    conn = get_db_connection()
-    try:
-        cur = conn.cursor()
-        cur.execute(
-            "INSERT INTO dbo.sessions(session_id, user_label) VALUES (?, ?)", (sid, None))
-        conn.commit()
-    finally:
-        try:
-            conn.close()
-        except Exception:
-            pass
-
+    create_chat_session(sid)
     return jsonify({"session_id": sid})
 
 
 # ===============================
-# File Uploads, List, Download
+# File Uploads, List, Download, Delete
 # ===============================
-
 @app.post("/api/upload")
 def api_upload():
     try:
@@ -394,6 +303,8 @@ def api_upload():
         if not session_id:
             return jsonify({"error": "session_id is required"}), 400
 
+        ensure_chat_session(session_id)
+
         if "file" not in request.files:
             return jsonify({"error": "file is required"}), 400
 
@@ -401,49 +312,25 @@ def api_upload():
         if not f or not f.filename:
             return jsonify({"error": "file is required"}), 400
 
-        original_name = secure_filename(f.filename)
-        if not allowed_file(original_name):
-            return jsonify({"error": "file type not allowed"}), 400
-
-        ts = int(time.time())
-        stored_name = f"{session_id}_{ts}_{original_name}"
-        save_path = os.path.join(UPLOAD_DIR, stored_name)
-
-        f.save(save_path)
-
-        size_bytes = None
-        try:
-            size_bytes = os.path.getsize(save_path)
-        except Exception:
-            pass
-
-        content_type = f.mimetype or None
-
-        conn = get_db_connection()
-        try:
-            cur = conn.cursor()
-            cur.execute(
-                """
-                INSERT INTO dbo.uploads(session_id, stored_name, original_name, content_type, size_bytes)
-                VALUES (?, ?, ?, ?, ?)
-                """,
-                (session_id, stored_name, original_name, content_type, size_bytes),
-            )
-            conn.commit()
-        finally:
-            try:
-                conn.close()
-            except Exception:
-                pass
+        file_info = save_file_to_disk(f, UPLOAD_DIR, session_id)
+        add_upload_record(
+            session_id=session_id,
+            stored_name=file_info["stored_name"],
+            original_name=file_info["original_name"],
+            content_type=file_info["content_type"],
+            size_bytes=file_info["size_bytes"],
+        )
 
         return jsonify({
             "status": "ok",
-            "stored_name": stored_name,
-            "original_name": original_name,
-            "size_bytes": size_bytes,
-            "content_type": content_type
+            "stored_name": file_info["stored_name"],
+            "original_name": file_info["original_name"],
+            "size_bytes": file_info["size_bytes"],
+            "content_type": file_info["content_type"],
         })
 
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
     except Exception as e:
         app.logger.exception("Upload failed")
         return jsonify({
@@ -457,36 +344,15 @@ def api_list_uploads(session_id):
     try:
         ensure_schema()
 
-        conn = get_db_connection()
-        try:
-            cur = conn.cursor()
-            cur.execute(
-                """
-                SELECT TOP 50 upload_id, original_name, stored_name, content_type, size_bytes, created_at
-                FROM dbo.uploads
-                WHERE session_id = ?
-                ORDER BY upload_id DESC
-                """,
-                (session_id,),
-            )
-            rows = cur.fetchall()
-        finally:
-            try:
-                conn.close()
-            except Exception:
-                pass
-
-        items = []
-        for r in rows:
-            items.append({
-                "upload_id": int(r[0]),
-                "original_name": r[1],
-                "stored_name": r[2],
-                "content_type": r[3],
-                "size_bytes": int(r[4]) if r[4] is not None else None,
-                "created_at": str(r[5]),
-                "download_url": f"/api/download/{r[2]}"
-            })
+        items = list_uploads_with_file_state(session_id, UPLOAD_DIR)
+        for item in items:
+            item["download_url"] = f"/api/download/{item['stored_name']}"
+            if "created_at" in item:
+                item["created_at"] = str(item["created_at"])
+            if item.get("size_bytes") is not None:
+                item["size_bytes"] = int(item["size_bytes"])
+            if item.get("upload_id") is not None:
+                item["upload_id"] = int(item["upload_id"])
 
         return jsonify({"status": "ok", "items": items})
 
@@ -501,13 +367,13 @@ def api_list_uploads(session_id):
 @app.get("/api/download/<path:stored_name>")
 def api_download(stored_name):
     try:
-        safe_name = secure_filename(stored_name)
-        file_path = os.path.join(UPLOAD_DIR, safe_name)
+        upload = get_upload_by_stored_name(stored_name)
 
-        if not os.path.isfile(file_path):
+        file_path = os.path.join(UPLOAD_DIR, stored_name)
+        if not upload or not os.path.isfile(file_path):
             return jsonify({"error": "File not found"}), 404
 
-        return send_from_directory(UPLOAD_DIR, safe_name, as_attachment=True)
+        return send_from_directory(UPLOAD_DIR, stored_name, as_attachment=True)
 
     except Exception as e:
         app.logger.exception("Download failed")
@@ -517,9 +383,6 @@ def api_download(stored_name):
         }), 500
 
 
-# ===============================
-# Delete upload endpoint (delete DB row and file)
-# ===============================
 @app.delete("/api/uploads/<int:upload_id>")
 def api_delete_upload(upload_id):
     try:
@@ -530,50 +393,13 @@ def api_delete_upload(upload_id):
         if not session_id:
             return jsonify({"error": "session_id is required"}), 400
 
-        stored_name = None
+        upload = get_upload(upload_id, session_id)
+        if not upload:
+            return jsonify({"error": "Upload not found for this session"}), 404
 
-        conn = get_db_connection()
-        try:
-            cur = conn.cursor()
-
-            # Verify the upload belongs to this session and fetch stored_name
-            cur.execute(
-                """
-                SELECT stored_name
-                FROM dbo.uploads
-                WHERE upload_id = ? AND session_id = ?
-                """,
-                (upload_id, session_id),
-            )
-            row = cur.fetchone()
-            if not row:
-                return jsonify({"error": "Upload not found for this session"}), 404
-
-            stored_name = row[0]
-
-            # Delete DB row
-            cur.execute(
-                "DELETE FROM dbo.uploads WHERE upload_id = ? AND session_id = ?",
-                (upload_id, session_id),
-            )
-            conn.commit()
-
-        finally:
-            try:
-                conn.close()
-            except Exception:
-                pass
-
-        # Delete the file from disk
-        safe_name = secure_filename(stored_name)
-        file_path = os.path.join(UPLOAD_DIR, safe_name)
-        file_deleted = False
-        if os.path.isfile(file_path):
-            try:
-                os.remove(file_path)
-                file_deleted = True
-            except Exception:
-                app.logger.exception("Failed to delete file from disk")
+        stored_name = upload["stored_name"]
+        delete_upload_record(upload_id, session_id)
+        file_deleted = delete_file_from_disk(UPLOAD_DIR, stored_name)
 
         return jsonify({
             "status": "ok",
@@ -615,32 +441,11 @@ def api_chat():
         if err:
             return jsonify({"error": err}), 500
 
-        # Store user message and load history
-        conn = get_db_connection()
-        try:
-            cur = conn.cursor()
-            cur.execute(
-                "INSERT INTO dbo.messages(session_id, role, content) VALUES (?, ?, ?)",
-                (session_id, "user", user_message),
-            )
-            conn.commit()
-
-            cur.execute(
-                """
-                SELECT TOP 20 role, content
-                FROM dbo.messages
-                WHERE session_id = ?
-                ORDER BY message_id DESC
-                """,
-                (session_id,),
-            )
-            rows = cur.fetchall()
-            history = [{"role": r[0], "content": r[1]} for r in reversed(rows)]
-        finally:
-            try:
-                conn.close()
-            except Exception:
-                pass
+        ensure_chat_session(session_id)
+        add_chat_message(session_id, "user", user_message)
+        history_rows = get_chat_messages(session_id, limit=20)
+        history = [{"role": r["role"], "content": r["content"]}
+                   for r in history_rows]
 
         system_text = """
 You are a university Credit for Prior Learning (CPL) assistant designed ONLY to collect information for certification-based course waiver requests.
@@ -911,21 +716,7 @@ Your only role is to collect the information required for a certification waiver
         )
 
         answer = (response.choices[0].message.content or "").strip()
-
-        # Store assistant message
-        conn2 = get_db_connection()
-        try:
-            cur2 = conn2.cursor()
-            cur2.execute(
-                "INSERT INTO dbo.messages(session_id, role, content) VALUES (?, ?, ?)",
-                (session_id, "assistant", answer),
-            )
-            conn2.commit()
-        finally:
-            try:
-                conn2.close()
-            except Exception:
-                pass
+        add_chat_message(session_id, "assistant", answer)
 
         return jsonify({"answer": answer})
 
