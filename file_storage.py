@@ -145,3 +145,39 @@ def list_uploads_with_file_state(session_id, upload_dir: str):
         item["exists_on_disk"] = file_exists_on_disk(upload_dir, stored_name)
 
     return items
+
+
+def extract_text_preview(file_path: str, max_chars: int = 600) -> str:
+    """
+    Safe preview extractor that does not require extra packages.
+    - Always supports plain text files.
+    - Falls back to no preview for file types that require optional parsers.
+    - Never raises parsing errors to the caller.
+    """
+    ext = os.path.splitext(file_path)[1].lower()
+
+    try:
+        if ext == ".txt":
+            with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
+                return f.read(max_chars).strip()
+
+        # Do not require extra packages for PDF/DOCX parsing.
+        # If future runtime environments include safe built-in parsing support,
+        # this function can be extended without changing the API.
+        if ext in {".pdf", ".docx", ".doc"}:
+            return ""
+
+    except Exception:
+        return ""
+
+    return ""
+
+
+def get_upload_text_preview(upload_dir: str, stored_name: str, max_chars: int = 600) -> str:
+    safe_name = secure_filename(stored_name)
+    file_path = os.path.join(upload_dir, safe_name)
+
+    if not os.path.isfile(file_path):
+        return ""
+
+    return extract_text_preview(file_path, max_chars=max_chars)

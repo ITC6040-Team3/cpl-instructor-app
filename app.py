@@ -23,6 +23,7 @@ from file_storage import (
     get_upload_by_stored_name,
     delete_upload_record,
     delete_file_from_disk,
+    get_upload_text_preview,
 )
 
 # Explicit template folder for Azure App Service reliability
@@ -172,18 +173,43 @@ def build_upload_context(session_id: str):
     if not items:
         return "No uploaded files for this session."
 
+    max_files = 2
+    max_chars_per_file = 600
+    total_char_budget = 1200
+    used_chars = 0
+
     lines = []
-    for item in items:
+    for item in items[:max_files]:
         original_name = item.get("original_name") or item.get(
             "stored_name") or "unknown"
+        stored_name = item.get("stored_name") or ""
         content_type = item.get("content_type") or "unknown"
         size_bytes = item.get("size_bytes")
         exists_on_disk = item.get("exists_on_disk")
         created_at = item.get("created_at")
 
+        preview = ""
+        if exists_on_disk and stored_name:
+            preview = get_upload_text_preview(
+                UPLOAD_DIR,
+                stored_name,
+                max_chars=max_chars_per_file,
+            )
+
+        if preview:
+            remaining = max(total_char_budget - used_chars, 0)
+            if remaining > 0:
+                preview = preview[:remaining]
+                used_chars += len(preview)
+            else:
+                preview = ""
+
         lines.append(
             f"- file: {original_name}; type: {content_type}; size_bytes: {size_bytes}; exists_on_disk: {exists_on_disk}; created_at: {created_at}"
         )
+
+        if preview:
+            lines.append(f"  preview: {preview}")
 
     return "Uploaded files for this session:\n" + "\n".join(lines)
 
@@ -895,9 +921,10 @@ Your only role is to collect the information required for a certification waiver
 
 SESSION FILE CONTEXT
 
-Use the uploaded file metadata below as additional intake context when it is relevant.
-Do not invent file contents that are not explicitly available.
-You may refer to filenames and file presence as supporting evidence context.
+Use the uploaded file context below as additional intake context when it is relevant.
+The file context may include metadata and a short safe text preview for supported file types.
+Do not invent file contents beyond what is explicitly shown.
+You may refer to filenames, file presence, and visible preview text as supporting evidence context.
 
 {upload_context}
 """
@@ -929,7 +956,7 @@ New user message:
 New assistant response:
 {answer}
 
-Uploaded file metadata for this session:
+Uploaded file context for this session:
 {upload_context}
 
 Write an updated summary in plain English.
@@ -988,7 +1015,7 @@ Latest user message:
 Latest assistant response:
 {answer}
 
-Uploaded file metadata for this session:
+Uploaded file context for this session:
 {upload_context}
 """
 
