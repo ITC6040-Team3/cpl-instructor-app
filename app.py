@@ -684,10 +684,16 @@ def api_chat():
 
         ensure_chat_session(session_id)
         add_chat_message(session_id, "user", user_message)
+        
         history_rows = get_chat_messages(session_id, limit=20)
-        history = [{"role": r["role"], "content": r["content"]}
-                   for r in history_rows]
+        history = [{"role": r["role"], "content": r["content"]} for r in history_rows]
+        
         upload_context = build_upload_context(session_id)
+        
+        existing_summary_row = get_summary(session_id)
+        existing_summary = ""
+        if existing_summary_row and existing_summary_row.get("summary_text"):
+            existing_summary = existing_summary_row["summary_text"]
 
         system_text = f"""
 You are a university Credit for Prior Learning (CPL) intake assistant.
