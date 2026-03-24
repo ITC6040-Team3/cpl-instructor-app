@@ -1,5 +1,6 @@
 const SESSION_STORAGE_KEY = "cpl_session_id";
 let sessionId = localStorage.getItem(SESSION_STORAGE_KEY) || null;
+let resumeChoiceMade = false;
 
 function setStatus(text) {
   const el = document.getElementById("status");
@@ -51,47 +52,6 @@ function appendMessage(role, text) {
   scrollChatToBottom();
 }
 
-function renderChatHistory(items) {
-  clearChatMessages();
-
-  if (!items || items.length === 0) {
-    return;
-  }
-
-  items.forEach((item) => {
-    const role = item.role === "user" ? "user" : "bot";
-    appendMessage(role, item.content || "");
-  });
-}
-
-async function loadChatHistory() {
-  if (!sessionId) {
-    clearChatMessages();
-    return;
-  }
-
-  try {
-    const res = await fetch(`/api/messages/${sessionId}`);
-    const data = await res.json();
-
-    if (!res.ok) {
-      clearChatMessages();
-      appendMessage(
-        "bot",
-        data?.error
-          ? `History error: ${data.error}${data.details ? " - " + data.details : ""}`
-          : `History error: ${res.status}`
-      );
-      return;
-    }
-
-    renderChatHistory(data.items || []);
-  } catch (e) {
-    clearChatMessages();
-    appendMessage("bot", `Network error: ${e?.message || e}`);
-  }
-}
-
 function appendTemporaryThinking() {
   const box = getChatMessagesEl();
   if (!box) return null;
@@ -141,6 +101,20 @@ function resetSessionView() {
       </li>
     `;
   }
+}
+
+function showResumeModal() {
+  const modal = document.getElementById("resumeModal");
+  if (!modal) return;
+  modal.classList.add("show");
+  modal.setAttribute("aria-hidden", "false");
+}
+
+function hideResumeModal() {
+  const modal = document.getElementById("resumeModal");
+  if (!modal) return;
+  modal.classList.remove("show");
+  modal.setAttribute("aria-hidden", "true");
 }
 
 async function startNewSession() {
@@ -209,10 +183,9 @@ async function ensureSession() {
   localStorage.setItem(SESSION_STORAGE_KEY, sessionId);
   setStatus(`Session: ${sessionId}`);
 
-  await loadChatHistory();
-  await refreshUploads();
-  await loadSummary();
-  await loadEvidence();
+  refreshUploads();
+  loadSummary();
+  loadEvidence();
   return sessionId;
 }
 
@@ -431,7 +404,7 @@ async function sendMessage() {
       return;
     }
 
-    await loadChatHistory();
+    appendMessage("bot", data?.answer ?? text);
     await loadSummary();
     await loadEvidence();
   } catch (e) {
@@ -520,10 +493,32 @@ if (deleteSessionBtn) {
   });
 }
 
-if (sessionId) {
-  setStatus(`Session: ${sessionId}`);
-  loadChatHistory();
-  refreshUploads();
-  loadSummary();
-  loadEvidence();
-}
+document.addEventListener("DOMContentLoaded", async () => {
+  const resumeContinueBtn = document.getElementById("resumeContinue");
+  const resumeNewSessionBtn = document.getElementById("resumeNewSession");
+
+  if (resumeContinueBtn) {
+    resumeContinueBtn.addEventListener("click", async () => {
+      resumeChoiceMade = true;
+      hideResumeModal();
+      setStatus(`Session: ${sessionId}`);
+      await refreshUploads();
+      await loadSummary();
+      await loadEvidence();
+    });
+  }
+
+  if (resumeNewSessionBtn) {
+    resumeNewSessionBtn.addEventListener("click", async () => {
+      resumeChoiceMade = true;
+      hideResumeModal();
+      await startNewSession();
+    });
+  }
+
+  if (sessionId) {
+    showResumeModal();
+  } else {
+    await ensureSession();
+  }
+});

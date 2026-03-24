@@ -16,9 +16,6 @@
         --primary-soft: #E8F3FF;
         --danger: #DC2626;
         --danger-600: #B91C1C;
-        --warning-bg: #FFF7E8;
-        --warning-border: #F7D8A8;
-        --warning-text: #8A5A00;
         --shadow: 0 10px 30px rgba(22, 93, 255, 0.08);
         --radius: 16px;
       }
@@ -89,10 +86,15 @@
         display: flex;
         align-items: center;
         justify-content: space-between;
-        gap: 12px;
+        gap: 16px;
         padding: 16px 16px 14px;
         border-bottom: 1px solid var(--border);
         background: #fff;
+      }
+
+      .chatHeaderInfo {
+        flex: 1;
+        min-width: 0;
       }
 
       .chatHeaderTitle {
@@ -104,7 +106,10 @@
       .chatHeaderHint {
         margin: 4px 0 0;
         color: var(--muted);
-        font-size: 12px;
+        font-size: 13px;
+        line-height: 1.4;
+        white-space: normal;
+        overflow: hidden;
       }
 
       .sessionBar {
@@ -270,6 +275,11 @@
         line-height: 1.45;
       }
 
+      .summaryCard .cardHint,
+      .summaryCard pre {
+        color: var(--text);
+      }
+
       pre {
         white-space: pre-wrap;
         margin: 0;
@@ -393,6 +403,54 @@
         font-size: 12px;
         line-height: 1.4;
       }
+
+      /* Modal */
+      .modalOverlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(15, 23, 42, 0.32);
+        display: none;
+        align-items: center;
+        justify-content: center;
+        padding: 20px;
+        z-index: 999;
+      }
+
+      .modalOverlay.show {
+        display: flex;
+      }
+
+      .modalCard {
+        width: 100%;
+        max-width: 420px;
+        background: #fff;
+        border: 1px solid var(--border);
+        border-radius: 18px;
+        box-shadow: 0 20px 40px rgba(15, 23, 42, 0.18);
+        padding: 22px;
+      }
+
+      .modalTitle {
+        margin: 0 0 8px;
+        font-size: 22px;
+        font-weight: 700;
+        color: var(--text);
+      }
+
+      .modalText {
+        margin: 0;
+        color: var(--muted);
+        font-size: 14px;
+        line-height: 1.6;
+      }
+
+      .modalActions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 10px;
+        margin-top: 20px;
+        flex-wrap: wrap;
+      }
     </style>
   </head>
   <body>
@@ -409,7 +467,7 @@
       <div class="layout">
         <div class="card chatCard">
           <div class="chatHeader">
-            <div>
+            <div class="chatHeaderInfo">
               <h2 class="chatHeaderTitle">Chat</h2>
               <p class="chatHeaderHint">
                 Submit your certification waiver information step by step.
@@ -422,7 +480,6 @@
               <button id="deleteSession" class="btn btnDanger">Delete Session</button>
             </div>
           </div>
-
 
           <div id="chatMessages" class="chatMessages">
             <div class="emptyState">
@@ -439,7 +496,7 @@
         </div>
 
         <div class="sideCol">
-          <div class="card">
+          <div class="card summaryCard">
             <h2 class="cardTitle">Case Summary</h2>
             <p class="cardHint">
               AI-generated summary for the current session.
@@ -477,6 +534,20 @@
               Files are attached to the current session. Older uploaded files may not persist across redeploys.
             </div>
           </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Continue Session Modal -->
+    <div id="resumeModal" class="modalOverlay" aria-hidden="true">
+      <div class="modalCard">
+        <h3 class="modalTitle">Continue previous chat?</h3>
+        <p class="modalText">
+          An existing session was found in this browser. Would you like to continue the previous chat or start a new session?
+        </p>
+        <div class="modalActions">
+          <button id="resumeNewSession" class="btn">New Session</button>
+          <button id="resumeContinue" class="btn btnPrimary">Continue</button>
         </div>
       </div>
     </div>
