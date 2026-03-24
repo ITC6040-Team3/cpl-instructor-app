@@ -1,6 +1,5 @@
 const SESSION_STORAGE_KEY = "cpl_session_id";
 let sessionId = localStorage.getItem(SESSION_STORAGE_KEY) || null;
-let resumeChoiceMade = false;
 
 function setStatus(text) {
   const el = document.getElementById("status");
@@ -183,10 +182,60 @@ async function ensureSession() {
   localStorage.setItem(SESSION_STORAGE_KEY, sessionId);
   setStatus(`Session: ${sessionId}`);
 
-  refreshUploads();
-  loadSummary();
-  loadEvidence();
   return sessionId;
+}
+
+async function fetchUploadsData() {
+  if (!sessionId) return { items: [] };
+
+  const res = await fetch(`/api/uploads/${sessionId}`);
+  const data = await res.json();
+  if (!res.ok) throw new Error(data?.error || `Uploads error: ${res.status}`);
+  return data;
+}
+
+async function fetchSummaryData() {
+  if (!sessionId) return { summary: null };
+
+  const res = await fetch(`/api/summary/${sessionId}`);
+  const data = await res.json();
+  if (!res.ok) throw new Error(data?.error || `Summary error: ${res.status}`);
+  return data;
+}
+
+async function fetchEvidenceData() {
+  if (!sessionId) return { items: [] };
+
+  const res = await fetch(`/api/evidence/${sessionId}`);
+  const data = await res.json();
+  if (!res.ok) throw new Error(data?.error || `Evidence error: ${res.status}`);
+  return data;
+}
+
+async function sessionHasMeaningfulContent() {
+  if (!sessionId) return false;
+
+  try {
+    const [summaryData, evidenceData, uploadsData] = await Promise.all([
+      fetchSummaryData(),
+      fetchEvidenceData(),
+      fetchUploadsData(),
+    ]);
+
+    const summaryText = summaryData?.summary?.summary_text?.trim();
+    const hasSummary = !!summaryText && summaryText !== "No summary yet.";
+
+    const evidenceItems = evidenceData?.items || [];
+    const hasEvidence = evidenceItems.length > 0;
+
+    const uploadItems = uploadsData?.items || [];
+    const hasUploads = uploadItems.length > 0;
+
+    return hasSummary || hasEvidence || hasUploads;
+  } catch (e) {
+    console.warn("Failed to inspect existing session content:", e);
+    return false;
+  }
 }
 
 async function refreshUploads() {
@@ -199,15 +248,7 @@ async function refreshUploads() {
   }
 
   try {
-    const res = await fetch(`/api/uploads/${sessionId}`);
-    const data = await res.json();
-
-    if (!res.ok) {
-      listEl.textContent = data?.error
-        ? `Error: ${data.error}${data.details ? " - " + data.details : ""}`
-        : `Error: ${res.status}`;
-      return;
-    }
+    const data = await fetchUploadsData();
 
     const items = data.items || [];
     if (items.length === 0) {
@@ -245,16 +286,7 @@ async function loadSummary() {
   }
 
   try {
-    const res = await fetch(`/api/summary/${sessionId}`);
-    const data = await res.json();
-
-    if (!res.ok) {
-      box.textContent = data?.error
-        ? `Error: ${data.error}${data.details ? " - " + data.details : ""}`
-        : `Error: ${res.status}`;
-      return;
-    }
-
+    const data = await fetchSummaryData();
     const summaryText = data?.summary?.summary_text;
     box.textContent = summaryText || "No summary yet.";
   } catch (e) {
@@ -276,23 +308,9 @@ async function loadEvidence() {
   }
 
   try {
-    const res = await fetch(`/api/evidence/${sessionId}`);
-    const data = await res.json();
-
-    if (!res.ok) {
-      list.innerHTML = `
-        <li class="evidenceItem">
-          <div class="evidenceDetails">${
-            data?.error
-              ? `Error: ${data.error}${data.details ? " - " + data.details : ""}`
-              : `Error: ${res.status}`
-          }</div>
-        </li>
-      `;
-      return;
-    }
-
+    const data = await fetchEvidenceData();
     const items = data.items || [];
+
     if (items.length === 0) {
       list.innerHTML = `
         <li class="evidenceItem">
@@ -499,7 +517,6 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   if (resumeContinueBtn) {
     resumeContinueBtn.addEventListener("click", async () => {
-      resumeChoiceMade = true;
       hideResumeModal();
       setStatus(`Session: ${sessionId}`);
       await refreshUploads();
@@ -510,14 +527,21 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   if (resumeNewSessionBtn) {
     resumeNewSessionBtn.addEventListener("click", async () => {
-      resumeChoiceMade = true;
       hideResumeModal();
       await startNewSession();
     });
   }
 
   if (sessionId) {
-    showResumeModal();
+    const shouldResume = await sessionHasMeaningfulContent();
+    if (shouldResume) {
+      showResumeModal();
+    } else {
+      setStatus(`Session: ${sessionId}`);
+      await refreshUploads();
+      await loadSummary();
+      await loadEvidence();
+    }
   } else {
     await ensureSession();
   }
