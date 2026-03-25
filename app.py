@@ -922,11 +922,15 @@ Uploaded file context for this session:
 
 Write an updated summary in plain English.
 Keep it concise and useful for internal review.
+
 Include:
-- target course (if mentioned)
-- certification details collected so far
+- waiver support type (certification or work experience, if known)
+- target course information collected so far
+- certification details collected so far, if the student is following the certification path
+- work experience details collected so far, if the student is following the work experience path
 - evidence provided so far
 - missing information still needed
+- current intake stage, if it can be reasonably inferred
 
 Do not include extra commentary.
 """
@@ -955,7 +959,7 @@ Schema:
 {{
   "items": [
     {{
-      "kind": "course|certification|evidence|identity|status",
+      "kind": "course|certification|work_experience|evidence|identity|status",
       "title": "string or null",
       "org": "string or null",
       "start_date": "string or null",
@@ -966,6 +970,20 @@ Schema:
 }}
 
 Use the current summary and latest exchange to build the structured items.
+
+Guidance:
+- Use kind="course" for course code, course title, program/department, and term information when appropriate.
+- Use kind="certification" for certification name, certification level, badge ID, certificate ID, and related certification information.
+- Use kind="work_experience" for job title, employer, employment period, relevant responsibilities, experience type, and other work-related information.
+- Use kind="evidence" for verification links, uploaded files, employer letters, resumes, portfolios, transcripts, or other supporting proof.
+- Use kind="identity" for name matching information.
+- Use kind="status" for certification status, expiration details, or other status-related information.
+
+Rules:
+- Do not invent file contents.
+- Uploaded files may count as supporting evidence even when only metadata is available.
+- If the student is on the certification path, prefer certification-related structured items.
+- If the student is on the work experience path, prefer work_experience-related structured items.
 
 Current summary:
 {summary_text}
@@ -983,7 +1001,7 @@ Uploaded file context for this session:
         evidence_response = client.chat.completions.create(
             model=deployment,
             messages=[
-                {"role": "system", "content": "You extract structured CPL evidence data and output valid JSON only."},
+                {"role": "system", "content": "You extract structured CPL intake data for certification or work experience waiver requests and output valid JSON only."},
                 {"role": "user", "content": evidence_prompt},
             ],
             temperature=0.1,
