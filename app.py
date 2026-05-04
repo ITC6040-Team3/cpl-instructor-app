@@ -26,64 +26,23 @@ from file_storage import (
     get_upload_text_preview,
 )
 
+# Explicit template folder for Azure App Service reliability
 app = Flask(__name__, template_folder="templates")
 
 BASE_DIR = os.path.dirname(__file__)
 UPLOAD_DIR = os.path.join(BASE_DIR, "uploads")
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
-app.config["MAX_CONTENT_LENGTH"] = 10 * 1024 * 1024
+app.config["MAX_CONTENT_LENGTH"] = 10 * 1024 * 1024  # 10 MB
 
 SCHEMA_SQL_PATH = os.path.join(BASE_DIR, "sql", "create_tables.sql")
+
 
 REQUIRED_ENV_VARS = [
     "AZURE_OPENAI_ENDPOINT",
     "AZURE_OPENAI_API_KEY",
     "AZURE_OPENAI_DEPLOYMENT",
 ]
-
-
-# ===============================
-# Usage Limiter
-# ===============================
-MAX_CHAT_REQUESTS = int(os.getenv("MAX_CHAT_REQUESTS", "300"))
-
-
-def ensure_usage_table():
-    execute_non_query("""
-        IF OBJECT_ID('dbo.usage_counter', 'U') IS NULL
-        BEGIN
-            CREATE TABLE dbo.usage_counter (
-                id INT IDENTITY(1,1) PRIMARY KEY,
-                route NVARCHAR(100) NOT NULL DEFAULT 'api_chat',
-                created_at DATETIME DEFAULT GETDATE()
-            );
-        END
-    """)
-
-
-def get_usage_count():
-    ensure_usage_table()
-    rows = fetch_all(
-        "SELECT COUNT(*) AS usage_count FROM dbo.usage_counter WHERE route = ?",
-        ("api_chat",),
-    )
-    return int(rows[0]["usage_count"]) if rows else 0
-
-
-def increment_usage():
-    ensure_usage_table()
-    execute_non_query(
-        "INSERT INTO dbo.usage_counter (route) VALUES (?)",
-        ("api_chat",),
-    )
-
-
-def usage_limit_reached_message():
-    return (
-        "⚠️ This demo has reached its usage limit. "
-        "Please contact the project owner if you would like continued access."
-    )
 
 
 def require_env_or_exit():
@@ -110,9 +69,13 @@ def require_env_or_exit():
         raise RuntimeError(msg)
 
 
+# Fail fast on startup if configuration is incomplete
 require_env_or_exit()
 
 
+# ===============================
+# Azure OpenAI Client Factory
+# ===============================
 def get_client():
     endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
     api_key = os.getenv("AZURE_OPENAI_API_KEY")
@@ -154,6 +117,10 @@ def ensure_schema():
         app.logger.exception("Schema initialization failed")
         return False
 
+
+# ===============================
+# Evidence Items Helpers
+# ===============================
 
 def clear_evidence_items(session_id: str):
     execute_non_query(
@@ -198,6 +165,9 @@ def parse_json_payload(text: str):
     return json.loads(text)
 
 
+# ===============================
+# Upload Session File Context Helper
+# ===============================
 def build_upload_context(session_id: str):
     items = list_uploads_with_file_state(session_id, UPLOAD_DIR)
     if not items:
@@ -210,7 +180,8 @@ def build_upload_context(session_id: str):
 
     lines = []
     for item in items[:max_files]:
-        original_name = item.get("original_name") or item.get("stored_name") or "unknown"
+        original_name = item.get("original_name") or item.get(
+            "stored_name") or "unknown"
         stored_name = item.get("stored_name") or ""
         content_type = item.get("content_type") or "unknown"
         size_bytes = item.get("size_bytes")
@@ -234,8 +205,7 @@ def build_upload_context(session_id: str):
                 preview = ""
 
         lines.append(
-            f"- file: {original_name}; type: {content_type}; size_bytes: {size_bytes}; "
-            f"exists_on_disk: {exists_on_disk}; created_at: {created_at}"
+            f"- file: {original_name}; type: {content_type}; size_bytes: {size_bytes}; exists_on_disk: {exists_on_disk}; created_at: {created_at}"
         )
 
         if preview:
@@ -244,12 +214,18 @@ def build_upload_context(session_id: str):
     return "Uploaded files for this session:\n" + "\n".join(lines)
 
 
+# ===============================
+# Static File Route (bulletproof)
+# ===============================
 @app.get("/static/<path:filename>")
 def static_files(filename):
     static_dir = os.path.join(os.path.dirname(__file__), "static")
     return send_from_directory(static_dir, filename)
 
 
+# ===============================
+# Basic Pages
+# ===============================
 @app.get("/")
 def home():
     return render_template("index.html")
@@ -264,23 +240,19 @@ def chat_page():
 def admin_page():
     sql_present = True if get_sql_connection_string() else False
 
-    try:
-        usage_count = get_usage_count() if sql_present else "N/A"
-    except Exception:
-        usage_count = "Unavailable"
-
     status = {
         "AZURE_OPENAI_ENDPOINT": "✅ set" if os.getenv("AZURE_OPENAI_ENDPOINT") else "❌ missing",
         "AZURE_OPENAI_API_KEY": "✅ set" if os.getenv("AZURE_OPENAI_API_KEY") else "❌ missing",
         "AZURE_OPENAI_API_VERSION": os.getenv("AZURE_OPENAI_API_VERSION") or "(default: 2024-12-01-preview)",
         "AZURE_OPENAI_DEPLOYMENT": "✅ set" if os.getenv("AZURE_OPENAI_DEPLOYMENT") else "❌ missing",
         "SQL_CONNECTION_STRING": "✅ set" if sql_present else "❌ missing (REQUIRED)",
-        "MAX_CHAT_REQUESTS": MAX_CHAT_REQUESTS,
-        "CURRENT_CHAT_REQUESTS": usage_count,
     }
     return render_template("admin.html", status=status)
 
 
+# ===============================
+# Health + Debug
+# ===============================
 @app.get("/health")
 def health():
     try:
@@ -342,8 +314,6 @@ def setup_db():
             }), 500
 
         run_sql_file(SCHEMA_SQL_PATH)
-        ensure_usage_table()
-
         return jsonify({
             "status": "success",
             "message": "Database tables created successfully."
@@ -360,7 +330,6 @@ def setup_db():
 def dbinfo():
     try:
         ensure_schema()
-        ensure_usage_table()
 
         tables_rows = fetch_all(
             """
@@ -372,9 +341,10 @@ def dbinfo():
         tables = sorted([r["TABLE_NAME"] for r in tables_rows])
 
         counts = {}
-        for t in ["sessions", "messages", "summaries", "evidence_items", "uploads", "usage_counter"]:
+        for t in ["sessions", "messages", "summaries", "evidence_items", "uploads"]:
             if t in tables:
-                result = fetch_all(f"SELECT COUNT(1) AS row_count FROM dbo.{t}")
+                result = fetch_all(
+                    f"SELECT COUNT(1) AS row_count FROM dbo.{t}")
                 counts[t] = int(result[0]["row_count"]) if result else 0
             else:
                 counts[t] = None
@@ -411,6 +381,10 @@ def dbinfo():
         }), 500
 
 
+# ===============================
+# AI-Generated Session Summary API
+# ===============================
+
 @app.get("/api/summary/<session_id>")
 def api_get_summary(session_id):
     try:
@@ -427,6 +401,10 @@ def api_get_summary(session_id):
             "details": str(e)
         }), 500
 
+
+# ===============================
+# AI-Extracted Evidence Items API
+# ===============================
 
 @app.get("/api/evidence/<session_id>")
 def api_get_evidence(session_id):
@@ -462,6 +440,10 @@ def api_get_evidence(session_id):
         }), 500
 
 
+# ===============================
+# Chat History API
+# ===============================
+
 @app.get("/api/messages/<session_id>")
 def api_get_messages(session_id):
     try:
@@ -487,6 +469,10 @@ def api_get_messages(session_id):
             "details": str(e)
         }), 500
 
+# ===============================
+# Sessions
+# ===============================
+
 
 @app.post("/api/sessions")
 def create_session():
@@ -496,6 +482,9 @@ def create_session():
     return jsonify({"session_id": sid})
 
 
+# ===============================
+# Delete an entire session and all associated uploaded files
+# ===============================
 @app.delete("/api/session/<session_id>")
 def api_delete_session(session_id):
     try:
@@ -543,6 +532,9 @@ def api_delete_session(session_id):
         }), 500
 
 
+# ===============================
+# File Uploads, List, Download, Delete
+# ===============================
 @app.post("/api/upload")
 def api_upload():
     try:
@@ -665,24 +657,13 @@ def api_delete_upload(upload_id):
         }), 500
 
 
+# ===============================
+# Chat API Endpoint
+# ===============================
 @app.post("/api/chat")
 def api_chat():
     try:
         ensure_schema()
-
-        try:
-            current_usage = get_usage_count()
-        except Exception:
-            app.logger.exception("Usage limiter failed")
-            return jsonify({
-                "answer": (
-                    "⚠️ This demo is temporarily unavailable because usage tracking could not be verified. "
-                    "Please contact the project owner."
-                )
-            }), 200
-
-        if current_usage >= MAX_CHAT_REQUESTS:
-            return jsonify({"answer": usage_limit_reached_message()}), 200
 
         data = request.get_json(silent=True) or {}
         session_id = (data.get("session_id") or "").strip()
@@ -703,12 +684,12 @@ def api_chat():
 
         ensure_chat_session(session_id)
         add_chat_message(session_id, "user", user_message)
-
+        
         history_rows = get_chat_messages(session_id, limit=20)
         history = [{"role": r["role"], "content": r["content"]} for r in history_rows]
-
+        
         upload_context = build_upload_context(session_id)
-
+        
         existing_summary_row = get_summary(session_id)
         existing_summary = ""
         if existing_summary_row and existing_summary_row.get("summary_text"):
@@ -963,7 +944,8 @@ Do not include extra commentary.
             temperature=0.2,
         )
 
-        summary_text = (summary_response.choices[0].message.content or "").strip()
+        summary_text = (
+            summary_response.choices[0].message.content or "").strip()
         save_summary(session_id, summary_text)
 
         evidence_prompt = f"""
@@ -1025,15 +1007,14 @@ Uploaded file context for this session:
             temperature=0.1,
         )
 
-        evidence_raw = (evidence_response.choices[0].message.content or "").strip()
+        evidence_raw = (
+            evidence_response.choices[0].message.content or "").strip()
         evidence_data = parse_json_payload(evidence_raw)
         evidence_items = evidence_data.get("items", [])
         if not isinstance(evidence_items, list):
             evidence_items = []
 
         save_evidence_items(session_id, evidence_items)
-
-        increment_usage()
 
         return jsonify({
             "answer": answer,
@@ -1051,5 +1032,8 @@ Uploaded file context for this session:
         ), 500
 
 
+# ===============================
+# Local Dev Entry Point
+# ===============================
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8000)
